@@ -1,5 +1,4 @@
-﻿using System.ComponentModel;
-using HarmonyLib;
+﻿using HarmonyLib;
 using UnityEngine;
 
 namespace SphereOpt;

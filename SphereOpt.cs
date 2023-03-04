@@ -14,7 +14,7 @@ public class SphereOpt : BaseUnityPlugin
     private static AssetBundle bundle;
     private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
 
-    public static AssetBundle Bundle
+    private static AssetBundle Bundle
     {
         get
         {
