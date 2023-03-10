@@ -36,18 +36,31 @@ public class SphereOpt : BaseUnityPlugin
     }
     private void Awake()
     {
-        // Plugin startup logic
         logger = Logger;
-        logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
 
         CustomShaderManager.InitWithBundle(Bundle);
 
         CustomShaderManager.AddCustomShaderDesc(
-            "dysonshell",
-            "VF Shaders/Dyson Sphere/Dyson Shell Unlit",
+            "dysonshell-max",
             "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE"
         );
 
-        Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
+        CustomShaderManager.AddCustomShaderDesc(
+            "dysonshell-small",
+            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Small"
+        );
+
+        CustomShaderManager.AddCustomShaderDesc(
+            "dysonshell-large",
+            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Large"
+        );
+
+        CustomShaderManager.AddCustomShaderDesc(
+            "dysonshell-huge",
+            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge"
+        );
+
+        //Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
+        Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
     }
 }

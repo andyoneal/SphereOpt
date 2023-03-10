@@ -12,7 +12,7 @@ public static class CustomShaderManager
     private static readonly List<Shader> bundleShaders = new();
     private static readonly List<CustomShaderDesc> customShaderDescs = new();
     private static readonly Dictionary<string, CustomShaderDesc> shortNameMap = new();
-    private static readonly Dictionary<string, CustomShaderDesc> replacementForShaderMap = new();
+    private static readonly Dictionary<string, CustomShaderDesc> autoReplaceShaderMap = new();
     private static readonly Dictionary<CustomShaderDesc, List<Material>> shaderReplacedOnMaterialsMap = new();
 
     public static void InitWithBundle(string bundleFileName)
@@ -66,23 +66,17 @@ public static class CustomShaderManager
         return true;
     }
 
-    public static void AddCustomShaderDesc(string shortName, string shaderToReplace, string replacementShader)
+    public static void AddCustomShaderDesc(string shortName, string shaderName, string alwaysReplaceShaderName = null)
     {
-        CustomShaderDesc shaderDesc = new(shortName, shaderToReplace, replacementShader);
+        CustomShaderDesc shaderDesc = new(shortName, shaderName);
         customShaderDescs.Add(shaderDesc);
-        replacementForShaderMap.Add(shaderDesc.replacementForShader, shaderDesc);
+        if(alwaysReplaceShaderName != null) autoReplaceShaderMap.Add(alwaysReplaceShaderName, shaderDesc);
         shortNameMap.Add(shaderDesc.shortName, shaderDesc);
-
-    }
-
-    public static CustomShaderDesc LookupReplacementShaderFor(string originalShaderName)
-    {
-        return replacementForShaderMap.TryGetValue(originalShaderName, out var customShader) ? customShader : null;
     }
 
     public static bool ReplaceShaderIfAvailable(Material mat)
     {
-        if (replacementForShaderMap.TryGetValue(mat.shader.name, out var customShaderDesc))
+        if (autoReplaceShaderMap.TryGetValue(mat.shader.name, out var customShaderDesc))
         {
             SphereOpt.logger.LogInfo($"replacing shader on: {mat.name}");
             ApplyCustomShaderToMaterial(mat, customShaderDesc);
@@ -102,7 +96,17 @@ public static class CustomShaderManager
         return null;
     }
 
-    public static void ApplyCustomShaderToMaterial(Material mat, CustomShaderDesc replacementShader)
+    public static void ApplyCustomShaderToMaterial(Material mat, string shortName)
+    {
+        if (!shortNameMap.TryGetValue(shortName, out var customShaderDesc))
+        {
+            SphereOpt.logger.LogWarning($"Couldn't find a CustomShaderDesc with shortname: {shortName}");
+            return;
+        }
+        ApplyCustomShaderToMaterial(mat, customShaderDesc);
+    }
+
+    private static void ApplyCustomShaderToMaterial(Material mat, CustomShaderDesc replacementShader)
     {
         mat.shader = replacementShader.shader;
 
