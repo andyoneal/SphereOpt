@@ -60,7 +60,20 @@ public class SphereOpt : BaseUnityPlugin
             "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge"
         );
 
-        //Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
+        CustomShaderManager.AddCustomShaderDesc(
+            "dysonframe",
+            "VF Shaders/Dyson Sphere/Frame Inst REPLACE",
+            "VF Shaders/Dyson Sphere/Frame Inst"
+        );
+
+        CustomShaderManager.AddCustomShaderDesc(
+            "dysonnode",
+            "VF Shaders/Dyson Sphere/Node Inst REPLACE",
+            "VF Shaders/Dyson Sphere/Node Inst"
+        );
+
+
+        Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
     }
 }
