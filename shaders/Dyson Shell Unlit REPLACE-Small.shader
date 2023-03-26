@@ -28,7 +28,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Small" {
       GpuProgramID 41389
       CGPROGRAM
       #pragma vertex vert
-      #pragma geometry geom
       #pragma fragment frag
       #pragma target 5.0
       #pragma enable_d3d11_debug_symbols
