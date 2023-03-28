@@ -26,7 +26,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       #include "UnityCG.cginc"
       #include "AutoLight.cginc"
       #pragma target 5.0
-      #pragma enable_d3d11_debug_symbols
+      //#pragma enable_d3d11_debug_symbols
 
       float3 rotate_vector_fast(float3 v, float4 r){ 
         return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);

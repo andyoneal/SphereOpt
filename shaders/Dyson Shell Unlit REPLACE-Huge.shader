@@ -20,6 +20,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
       Tags { "LIGHTMODE" = "FORWARDBASE" "QUEUE" = "Geometry" "RenderType" = "DysonShell" }
       Cull Off
       Stencil {
+        ref [_Stencil]
         CompFront Always
         PassFront Replace
         FailFront Keep
@@ -31,7 +32,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
       #pragma geometry geom
       #pragma fragment frag
       #pragma target 5.0
-      #pragma enable_d3d11_debug_symbols
+      //#pragma enable_d3d11_debug_symbols
 
       float4 _SunColor;
       float4 _DysonEmission;
