@@ -75,5 +75,6 @@ public class SphereOpt : BaseUnityPlugin
 
         Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
+        Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereLayer));
     }
 }
