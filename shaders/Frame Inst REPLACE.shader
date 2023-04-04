@@ -187,8 +187,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float distViewToUPos = length(rayViewToUPos.xyz);
         float scaled_distViewToUPos = 10000 * (log(0.0001 * distViewToUPos) + 1) / distViewToUPos;
         rayViewToUPos.xyz = distViewToUPos > 10000 ? rayViewToUPos.xyz * scaled_distViewToUPos : rayViewToUPos.xyz;
-        float3 adjustedUniversePos = _WorldSpaceCameraPos.xyz + rayViewToUPos.xyz;
-        float3 uPos = _Global_VMapEnabled > 0.5 ? adjustedUniversePos.xyz : universePos.xyz;
+        float3 uPos = _WorldSpaceCameraPos.xyz + rayViewToUPos.xyz;
 
         float4 clipPos = UnityWorldToClipPos(uPos.xyz);
 
@@ -204,15 +203,15 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         o.tbnw_matrix_x.x = worldTangent.x;
         o.tbnw_matrix_x.y = worldBinormal.x;
         o.tbnw_matrix_x.z = worldNormal.x;
-        o.tbnw_matrix_x.w = worldPos.x;
+        o.tbnw_matrix_x.w = uPos.x;
         o.tbnw_matrix_y.x = worldTangent.y;
         o.tbnw_matrix_y.y = worldBinormal.y;
         o.tbnw_matrix_y.z = worldNormal.y;
-        o.tbnw_matrix_y.w = worldPos.y;
+        o.tbnw_matrix_y.w = uPos.y;
         o.tbnw_matrix_z.x = worldTangent.z;
         o.tbnw_matrix_z.y = worldBinormal.z;
         o.tbnw_matrix_z.z = worldNormal.z;
-        o.tbnw_matrix_z.w = worldPos.z;
+        o.tbnw_matrix_z.w = uPos.z;
 
         o.u_v_radius_state.xy = v.texcoord.xy;
         o.u_v_radius_state.z = frameRadius;
@@ -303,14 +302,14 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         float3 emission = _EmissionMultiplier * lerp(_DysonEmission.xyz * emissionLuminance, i.color.xyz * emissionLuminance, i.color.www);
         
-        float albedoAlpha = saturate(1.25 * (maintex.w - 0.1));
-        float3 albedoColor = lerp(float3(1,1,1), _Color.xyz, albedoAlpha) * _AlbedoMultiplier * maintex.xyz;
-
-        albedoAlpha = dot(albedoColor, float3(0.3, 0.6, 0.1)) - cutOut * albedoAlpha;
+        float3 albedoColor = lerp(float3(1,1,1), _Color.xyz, saturate(1.25 * (maintex.w - 0.1))) * _AlbedoMultiplier * maintex.xyz;
+        float albedoLuminance = dot(albedoColor.xyz, float3(0.3, 0.6, 0.1)) * (1.0 - cutOut);
 
         float adjustColorAlpha = isInGameOrStarMap ? 0.2 : 0.3;
         float colorAlpha = i.color.w * adjustColorAlpha;
-        albedoColor = lerp(lerp(albedoAlpha, i.color.xyz, colorAlpha), lerp(albedoAlpha, i.color.xyz * albedoAlpha, colorAlpha), isInGameOrStarMap ? 0.7 : 0.6);
+        float3 colorLerp1 = lerp(albedoLuminance, i.color.xyz, colorAlpha);
+        float3 colorLerp2 = albedoLuminance * lerp(float3(1,1,1), i.color.xyz, colorAlpha);
+        albedoColor.xyz = lerp(colorLerp1, colorLerp2, isInGameOrStarMap ? 0.7 : 0.6);
 
         float3 tangentNormal = normalize(unpackedNormal);
 
@@ -355,7 +354,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         float NdotV = dot(worldNormal.xyz, worldViewDir.xyz);
         float NdotSV = dot(worldNormal.xyz, sunViewDir.xyz);
-        float NdotL = dot(worldNormal.xyz, lightDir.xyz);
+        float NdotL = dot(worldNormal.xyz, worldLightDir.xyz);
         float NdotH = dot(worldNormal.xyz, halfDir.xyz);
         float VdotH = dot(worldViewDir.xyz, halfDir.xyz);
         float clamp_NdotL = max(0, NdotL);
@@ -373,7 +372,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float fk = exp2((-6.98316002 + clamp_VdotH * -5.55472994) * clamp_VdotH);
         float F = lerp(0.5 + metallic, 1, fk);
 
-        float sunStrength = renderPlace < 0.5 ? pow(saturate(1.02 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), -lightDir.xyz)), 0.4) : 1;
+        float sunStrength = renderPlace < 0.5 ? pow(saturate(1.02 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), -worldLightDir.xyz)), 0.4) : 1;
         float3 sunColor = float3(1.25,1.25,1.25) * _SunColor.xyz * lengthLightRay * shadowMaskAttenuation;
         float intensity = renderPlace > 1.5 ? saturate(pow(NdotL * 0.5 + 0.6, 3)) + clamp_NdotSV : saturate(pow(NdotL * 0.5 + 0.6, 3));
         float3 sunLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * lerp(1, lengthLightRay, intensity) * intensity;

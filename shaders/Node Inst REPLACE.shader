@@ -171,9 +171,9 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
         float3 rayViewToUPos = universePos.xyz - _WorldSpaceCameraPos.xyz;
         float distViewToUpos = length(rayViewToUPos.xyz);
         rayViewToUPos.xyz = distViewToUpos > 10000 ? rayViewToUPos.xyz * (10000 * log(0.0001 * distViewToUpos) + 10000) / distViewToUpos : rayViewToUPos.xyz;
-        worldPos = _Global_VMapEnabled > 0.5 ? _WorldSpaceCameraPos.xyz + rayViewToUPos.xyz : universePos;
+        float3 uPos = _Global_VMapEnabled > 0.5 ? _WorldSpaceCameraPos.xyz + rayViewToUPos.xyz : universePos;
 
-        float4 clipPos = UnityWorldToClipPos(worldPos.xyz);
+        float4 clipPos = UnityWorldToClipPos(uPos.xyz);
 
         worldNormal = normalize(worldNormal.xyz);
         worldTangent = normalize(worldTangent.xyz);
@@ -187,15 +187,15 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
         o.tbnw_matrix_x.x = worldTangent.x;
         o.tbnw_matrix_x.y = worldBinormal.x;
         o.tbnw_matrix_x.z = worldNormal.x;
-        o.tbnw_matrix_x.w = worldPos.x;
+        o.tbnw_matrix_x.w = uPos.x;
         o.tbnw_matrix_y.x = worldTangent.y;
         o.tbnw_matrix_y.y = worldBinormal.y;
         o.tbnw_matrix_y.z = worldNormal.y;
-        o.tbnw_matrix_y.w = worldPos.y;
+        o.tbnw_matrix_y.w = uPos.y;
         o.tbnw_matrix_z.x = worldTangent.z;
         o.tbnw_matrix_z.y = worldBinormal.z;
         o.tbnw_matrix_z.z = worldNormal.z;
-        o.tbnw_matrix_z.w = worldPos.z;
+        o.tbnw_matrix_z.w = uPos.z;
 
         o.u_v_radius_state.xy = v.texcoord.xy;
         o.u_v_radius_state.z = frameRadius;
