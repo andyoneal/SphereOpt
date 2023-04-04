@@ -299,14 +299,14 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         //_EmissionTex
         float3 emissiontex = tex2Dbias(_EmissionTex, float4(i.u_v_radius_state.xy, 0,  -1)).xyz;
-        float3 emissionTintGreen = dot(emissiontex.xyz, float3(0.3, 0.6, 0.1));
+        float3 emissionLuminance = dot(emissiontex.xyz, float3(0.3, 0.6, 0.1));
 
-        float3 emission = _EmissionMultiplier * lerp(_DysonEmission.xyz * emissionTintGreen, i.color.xyz * emissionTintGreen, i.color.www);
+        float3 emission = _EmissionMultiplier * lerp(_DysonEmission.xyz * emissionLuminance, i.color.xyz * emissionLuminance, i.color.www);
         
         float albedoAlpha = saturate(1.25 * (maintex.w - 0.1));
         float3 albedoColor = lerp(float3(1,1,1), _Color.xyz, albedoAlpha) * _AlbedoMultiplier * maintex.xyz;
 
-        albedoAlpha = albedoAlpha - cutOut * dot(albedoColor, float3(0.3, 0.6, 0.1));
+        albedoAlpha = dot(albedoColor, float3(0.3, 0.6, 0.1)) - cutOut * albedoAlpha;
 
         float adjustColorAlpha = isInGameOrStarMap ? 0.2 : 0.3;
         float colorAlpha = i.color.w * adjustColorAlpha;
@@ -341,24 +341,17 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         worldNormal.xyz = normalize(worldNormal.xyz);
 
         float lengthLightRay = length(i.lightray_layer.xyz);
-        float3 worldLightDir = -normalize(i.lightray_layer.xyz);
-
-        float3 sunColor = _SunColor.xyz * lengthLightRay;
-
+        
         float metallic = saturate(mstex.x * 0.85 + 0.149);
         float perceptualRoughness = saturate(1 - mstex.y * 0.97);
-
-        float3 halfDir = normalize(worldViewDir + worldLightDir);
 
         float roughness = pow(perceptualRoughness, 2);
         float roughnessSqr = pow(roughness, 2);
         
-        float3 lightToCam = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz);
-
-        sunColor.xyz = float3(1.25,1.25,1.25) * sunColor.xyz;
-        float anotherFalloff = renderPlace < 0.5 ? pow(saturate(1.02 + dot(lightToCam.xyz, -lightDir.xyz)), 0.4) : 1;
-
         float3 sunViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos.xyz);
+
+        float3 worldLightDir = -normalize(i.lightray_layer.xyz);
+        float3 halfDir = normalize(worldViewDir + worldLightDir);
 
         float NdotV = dot(worldNormal.xyz, worldViewDir.xyz);
         float NdotSV = dot(worldNormal.xyz, sunViewDir.xyz);
@@ -371,11 +364,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float clamp_NdotSV = max(0, NdotSV);
         float clamp_NdotV = max(0, NdotV);
         
-        float NdotLFalloff = saturate(pow(NdotL * 0.5 + 0.6, 3));
-        float lightFalloff = 1.5 < renderPlace ? NdotLFalloff + clamp_NdotSV : NdotLFalloff;
-
-        sunColor.xyz = sunColor.xyz * shadowMaskAttenuation;
-
         float D = 0.25 * pow(rcp(pow(clamp_NdotH,2) * (roughnessSqr - 1) + 1),2) * roughnessSqr;
 
         float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1, clamp_NdotV);
@@ -385,18 +373,21 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float fk = exp2((-6.98316002 + clamp_VdotH * -5.55472994) * clamp_VdotH);
         float F = lerp(0.5 + metallic, 1, fk);
 
-        float3 sunLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * lerp(1, lengthLightRay, lightFalloff) * lightFalloff;
+        float sunStrength = renderPlace < 0.5 ? pow(saturate(1.02 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), -lightDir.xyz)), 0.4) : 1;
+        float3 sunColor = float3(1.25,1.25,1.25) * _SunColor.xyz * lengthLightRay * shadowMaskAttenuation;
+        float intensity = renderPlace > 1.5 ? saturate(pow(NdotL * 0.5 + 0.6, 3)) + clamp_NdotSV : saturate(pow(NdotL * 0.5 + 0.6, 3));
+        float3 sunLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * lerp(1, lengthLightRay, intensity) * intensity;
         float3 anotherLight = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedoColor.xyz, metallic) * sunColor.xyz;
         float3 ggx = anotherLight.xyz * (F * D * G + (1.0 / (10 * UNITY_PI))) * clamp_NdotL;
 
-        float3 finalLight = (sunLight.xyz * albedoColor.xyz * (1 - metallic * 0.6) + sunColor.xyz * clamp_NdotL * albedoColor.xyz * pow(1 - metallic, 0.6) + lerp(metallic, 1, albedoColor.xyz * 0.2) * ggx.xyz) * anotherFalloff;
+        float3 finalLight = (sunLight.xyz * albedoColor.xyz * (1 - metallic * 0.6) + sunColor.xyz * clamp_NdotL * albedoColor.xyz * pow(1 - metallic, 0.6) + lerp(metallic, 1, albedoColor.xyz * 0.2) * ggx.xyz) * sunStrength;
 
-        float lightStrength = dot(finalLight.xyz, float3(0.3, 0.6, 0.1));
+        float luminance = dot(finalLight.xyz, float3(0.3, 0.6, 0.1));
 
-        float3 lightNormalized = finalLight.xyz / lightStrength;
-        float bigLog = log(log(lightStrength) + 1) + 1;
+        float3 lightNormalized = finalLight.xyz / luminance;
+        float bigLog = log(log(luminance) + 1) + 1;
 
-        finalLight.xyz = lightStrength > 1 ? lightNormalized.xyz * bigLog : finalLight.xyz;
+        finalLight.xyz = luminance > 1 ? lightNormalized.xyz * bigLog : finalLight.xyz;
 
         o.sv_target.xyz = albedoColor.xyz * i.shadowCoords.xyz + finalLight.xyz + finalColor.xyz;
         o.sv_target.w = 1;

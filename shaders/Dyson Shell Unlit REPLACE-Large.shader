@@ -15,7 +15,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Large" {
     _CellSize ("细胞大小（是否有间隙）", Float) = 1
   }
   SubShader {
-    Tags { "LIGHTMODE" = "FORWARDBASE" "QUEUE" = "Geometry" "RenderType" = "DysonShell" }
     Pass {
       Tags { "LIGHTMODE" = "FORWARDBASE" "QUEUE" = "Geometry" "RenderType" = "DysonShell" }
       Cull Off
@@ -43,7 +42,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Large" {
       int _Global_DS_HideFarSide;
       int _Global_DS_PaintingLayerId;
       int _Global_DS_PaintingGridMode;
-      float _Global_VMapEnabled; //(always 1f if gameData != null)
+      //float _Global_VMapEnabled; //(always 1f if gameData != null)
       float _CellSize; ////always 1 except dyson-shell-unlit-0 which is 0.94
       int _Color32Int;
       float _AlbedoMultiplier;
@@ -82,5 +81,4 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Large" {
       ENDCG
     }
   }
-  Fallback "Diffuse"
 }
