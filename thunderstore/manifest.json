@@ -1,6 +1,6 @@
 {
   "name": "SphereOpt",
-  "version_number": "0.5.0",
+  "version_number": "0.7.1",
   "website_url": "https://github.com/andyoneal/SphereOpt",
   "description": "Improves performance when rendering Dyson Spheres",
   "dependencies": [

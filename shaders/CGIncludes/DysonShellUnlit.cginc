@@ -10,6 +10,22 @@ float3 HexPointWorldPos (float3 objPos, bool inGame)
     return worldPos;
 }
 
+int isInside(int nextLineIsConvex, int prevLineIsConvex, int nextLineInside, int thisLineInside, int prevLineInside)
+{
+    bool nextConvex = nextLineIsConvex > 0;
+    bool prevConvex = prevLineIsConvex > 0;
+
+    bool nextInside = nextLineInside > 0;
+    bool thisInside = thisLineInside > 0;
+    bool prevInside = prevLineInside > 0;
+
+    return nextConvex && prevConvex && nextInside && thisInside && prevInside ? 1 : 
+                    nextConvex && !prevConvex && nextInside && (prevInside || thisInside) ? 1 :
+                    !nextConvex && prevConvex && prevInside && (thisInside || nextInside) ? 1 :
+                    !nextConvex && !prevConvex && (nextInside || prevInside || thisInside) ? 1 :
+                    -1;
+}
+
 struct v2g
 {
     float4 vertex : POSITION;
@@ -349,7 +365,7 @@ v2g vert(appdata_full v)
     float3 nextnextLineToPoint = i.objectPos.xyz - _PolygonArr[polygonIndex + 2].xyz;
     float nextLineInside = sign(dot(nextnextLineToPoint, nextLineNormal)) * _Clockwise;
 
-    float insideBounds = min(nextLineIsConvex, prevLineIsConvex) * min(nextLineInside, min(thisLineInside, prevLineInside));
+    float insideBounds = isInside(nextLineIsConvex, prevLineIsConvex, nextLineInside, thisLineInside, prevLineInside);
 
     if (insideBounds < 0) discard;
     /* end shell/frame bounds check */
