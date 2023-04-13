@@ -14,6 +14,10 @@ public class SphereOpt : BaseUnityPlugin
     private static AssetBundle bundle;
     private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
 
+    public static InstDysonShellRenderer instRenderer;
+
+    public static int intersectionsFound = 0;
+
     private static AssetBundle Bundle
     {
         get
@@ -34,6 +38,9 @@ public class SphereOpt : BaseUnityPlugin
             return bundle;
         }
     }
+
+    public static bool OneRun = false;
+
     private void Awake()
     {
         logger = Logger;
@@ -61,6 +68,11 @@ public class SphereOpt : BaseUnityPlugin
         );
 
         CustomShaderManager.AddCustomShaderDesc(
+            "dysonshell-inst",
+            "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
+        );
+
+        CustomShaderManager.AddCustomShaderDesc(
             "dysonframe",
             "VF Shaders/Dyson Sphere/Frame Inst REPLACE",
             "VF Shaders/Dyson Sphere/Frame Inst"
@@ -75,6 +87,12 @@ public class SphereOpt : BaseUnityPlugin
 
         Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
-        Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereLayer));
+    }
+
+    public static InstDysonShellRenderer getInstDysonShellRendererForStar(DysonSphere ds)
+    {
+        //TODO: Make this work for multiple dyson spheres
+        if (instRenderer == null || instRenderer.dysonSphere != ds) instRenderer = new InstDysonShellRenderer(ds);
+        return instRenderer;
     }
 }

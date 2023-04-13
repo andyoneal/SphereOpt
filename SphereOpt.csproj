@@ -16,6 +16,7 @@
     </PackageReference>
     <PackageReference Include="BepInEx.Core" Version="5.*" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
+    <PackageReference Include="Clipper2" Version="1.2.2" />
     <PackageReference Include="DysonSphereProgram.GameLibs" Version="0.9.27.15466-r.0" />
     <PackageReference Include="UnityEngine.Modules" Version="2018.4.12" IncludeAssets="compile" />
   </ItemGroup>
