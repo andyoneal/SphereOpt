@@ -55,8 +55,11 @@ internal class Patch_DysonShell
             nodesXY[j*2+1] = XY.y;
             if (!SphereOpt.OneRun) SphereOpt.logger.LogWarning($"nodes[{j}]: {XY}");
         }
-        
-        clip.Add(Clipper.MakePath(nodesXY));
+
+        var nodesPath = Clipper.MakePath(nodesXY);
+
+        if (__instance.clockwise) nodesPath.Reverse();
+        clip.Add(nodesPath);
 
         for (int i = 0; i < verts.Length; i++)
         {
@@ -72,13 +75,13 @@ internal class Patch_DysonShell
                 axialCoords_xy =  (uint)((int)__instance.mesh.uv3[i].x & 0x0000ffff | (int)__instance.mesh.uv3[i].y << 16)
             };
 
-            if (!SphereOpt.OneRun)
+            if (true)// (!SphereOpt.OneRun)
             {
                 
 
                 //var vertsXY = new VectorLF2[verts.Length];
                 var vertXY = CartToGrid(verts[i], radius) + normTranslate;
-                SphereOpt.logger.LogWarning($"vertXY: {vertXY}");
+                //SphereOpt.logger.LogWarning($"vertXY: {vertXY}");
                 var gridSize = __instance.gridSize;
 
                 var subj = new PathsD();
@@ -91,7 +94,7 @@ internal class Patch_DysonShell
                 hexVertsXY[10] = vertXY.x - gridSize / 2.0;	hexVertsXY[11] = vertXY.y - gridSize/Math.Sqrt(3.0)/2.0;
                 subj.Add(Clipper.MakePath(hexVertsXY));
 
-                SphereOpt.logger.LogWarning($"hexvertsxy: {hexVertsXY.Join()}");
+                //SphereOpt.logger.LogWarning($"hexvertsxy: {hexVertsXY.Join()}");
 
                 var clipper = new ClipperD(8)
                 {
@@ -101,9 +104,10 @@ internal class Patch_DysonShell
                 clipper.AddClip(clip);
                 var solution = new PathsD();
                 clipper.Execute(ClipType.Intersection, FillRule.NonZero, solution);
+                if (solution.Count > 6) SphereOpt.logger.LogWarning($"solution over 6: {solution}");
 
                 //PathsD solution = Clipper.Intersect(subj, clip, FillRule.NonZero, 3);
-                SphereOpt.logger.LogWarning($"solution: {solution}");
+                //SphereOpt.logger.LogWarning($"solution: {solution}");
 
             }
             //var intersectRadius = (float)(__instance.gridScale * 80f / Math.Sqrt(3));
