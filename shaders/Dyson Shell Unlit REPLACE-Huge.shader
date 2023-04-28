@@ -15,11 +15,11 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
     _CellSize ("细胞大小（是否有间隙）", Float) = 1
   }
   SubShader {
-    Tags { "LIGHTMODE" = "FORWARDBASE" "QUEUE" = "Geometry" "RenderType" = "DysonShell" }
     Pass {
       Tags { "LIGHTMODE" = "FORWARDBASE" "QUEUE" = "Geometry" "RenderType" = "DysonShell" }
       Cull Off
       Stencil {
+        ref [_Stencil]
         CompFront Always
         PassFront Replace
         FailFront Keep
@@ -31,7 +31,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
       #pragma geometry geom
       #pragma fragment frag
       #pragma target 5.0
-      #pragma enable_d3d11_debug_symbols
+      //#pragma enable_d3d11_debug_symbols
 
       float4 _SunColor;
       float4 _DysonEmission;
@@ -42,7 +42,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
       int _Global_DS_HideFarSide;
       int _Global_DS_PaintingLayerId;
       int _Global_DS_PaintingGridMode;
-      float _Global_VMapEnabled; //(always 1f if gameData != null)
+      //float _Global_VMapEnabled; //(always 1f if gameData != null)
       float _CellSize; ////always 1 except dyson-shell-unlit-0 which is 0.94
       int _Color32Int;
       float _AlbedoMultiplier;
@@ -81,5 +81,4 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge" {
       ENDCG
     }
   }
-  Fallback "Diffuse"
 }
