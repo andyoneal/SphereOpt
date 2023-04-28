@@ -45,6 +45,16 @@ public static class CustomShaderManager
         }
     }
 
+    public static ComputeShader LoadComputeShader(string name)
+    {
+        if (bundle != null)
+        {
+            return bundle.LoadAsset<ComputeShader>(name);
+        }
+
+        return null;
+    }
+
     private static bool LoadShadersFromBundle()
     {
         SphereOpt.logger.LogInfo("Loading custom shaders from bundle.");

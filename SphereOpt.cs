@@ -1,4 +1,5 @@
-﻿using BepInEx;
+﻿using System.Collections.Generic;
+using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using System.IO;
@@ -14,9 +15,7 @@ public class SphereOpt : BaseUnityPlugin
     private static AssetBundle bundle;
     private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
 
-    public static InstDysonShellRenderer instRenderer;
-
-    public static int intersectionsFound = 0;
+    private static Dictionary<int, InstDysonShellRenderer> instRenderers = new();
 
     private static AssetBundle Bundle
     {
@@ -38,8 +37,6 @@ public class SphereOpt : BaseUnityPlugin
             return bundle;
         }
     }
-
-    public static bool OneRun = false;
 
     private void Awake()
     {
@@ -83,16 +80,25 @@ public class SphereOpt : BaseUnityPlugin
             "VF Shaders/Dyson Sphere/Node Inst REPLACE",
             "VF Shaders/Dyson Sphere/Node Inst"
         );
-
+        
 
         Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
+        Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereSegmentRenderer));
     }
 
-    public static InstDysonShellRenderer getInstDysonShellRendererForStar(DysonSphere ds)
+    public static InstDysonShellRenderer getInstDysonShellRendererForSphere(DysonSphere ds)
     {
-        //TODO: Make this work for multiple dyson spheres
-        if (instRenderer == null || instRenderer.dysonSphere != ds) instRenderer = new InstDysonShellRenderer(ds);
-        return instRenderer;
+        if (!instRenderers.ContainsKey(ds.starData.id))
+        {
+            instRenderers[ds.starData.id] = new InstDysonShellRenderer(ds);
+        }
+        return instRenderers[ds.starData.id];
+    }
+
+    public static void RemoveRenderer(DysonSphere ds)
+    {
+        //instRenderers[ds.starData.id] = null;
+        instRenderers.Remove(ds.starData.id);
     }
 }
