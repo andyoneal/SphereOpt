@@ -351,6 +351,7 @@ v2g vert(appdata_full v)
     
     float3 prevLineNormal = _PolygonNArr[polygonIndex - 1].xyz;
     float3 thisLineDir = _PolygonArr[polygonIndex + 1].xyz - _PolygonArr[polygonIndex].xyz;
+
     //float prevLineIsConvex = sign(dot(thisLineDir, prevLineNormal)) * _Clockwise;
     float3 prevLineToPoint = i.objectPos.xyz - _PolygonArr[polygonIndex - 1].xyz;
     //float prevLineInside = sign(dot(prevLineToPoint, prevLineNormal)) * _Clockwise;
@@ -401,6 +402,7 @@ v2g vert(appdata_full v)
         }
       }
     }
+
 
     if (insideBounds < 0) discard;
     /* end shell/frame bounds check */

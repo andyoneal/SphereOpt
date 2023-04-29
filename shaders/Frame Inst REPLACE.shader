@@ -24,7 +24,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       #pragma fragment frag
       #include "UnityCG.cginc"
       #pragma target 5.0
-      #pragma enable_d3d11_debug_symbols
+      //#pragma enable_d3d11_debug_symbols
 
       struct Segment {
         uint layer;
@@ -146,15 +146,15 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         o.tbnw_matrix_x.x = worldTangent.x;
         o.tbnw_matrix_x.y = worldBinormal.x;
         o.tbnw_matrix_x.z = worldNormal.x;
-        o.tbnw_matrix_x.w = worldPos.x;
+        o.tbnw_matrix_x.w = uPos.x;
         o.tbnw_matrix_y.x = worldTangent.y;
         o.tbnw_matrix_y.y = worldBinormal.y;
         o.tbnw_matrix_y.z = worldNormal.y;
-        o.tbnw_matrix_y.w = worldPos.y;
+        o.tbnw_matrix_y.w = uPos.y;
         o.tbnw_matrix_z.x = worldTangent.z;
         o.tbnw_matrix_z.y = worldBinormal.z;
         o.tbnw_matrix_z.z = worldNormal.z;
-        o.tbnw_matrix_z.w = worldPos.z;
+        o.tbnw_matrix_z.w = uPos.z;
 
         o.u_v_index.xy = v.texcoord.xy;
         o.u_v_index.z = instIndex;
@@ -247,8 +247,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         unpackedNormal.xy = normaltex.xy * float2(2,2) - float2(1,1);
         unpackedNormal.z = sqrt(1 - min(1, dot(unpackedNormal.xy, unpackedNormal.xy)));
         unpackedNormal.xy = _NormalMultiplier * unpackedNormal.xy;
-
-        //_EmissionTex
+        
         float3 emissiontex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
         float3 emissionLuminance = dot(emissiontex.xyz, float3(0.3, 0.6, 0.1));
 
@@ -346,7 +345,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float F = lerp(0.5 + metallic, 1, fk);
 
         float sunStrength = renderPlace < 0.5 ? pow(saturate(1.02 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), -worldLightDir.xyz)), 0.4) : 1;
-        float3 sunColor = float3(1.25,1.25,1.25) * _SunColor.xyz * lengthLightRay;// * shadowMaskAttenuation;
+        float3 sunColor = float3(1.25,1.25,1.25) * _SunColor.xyz * lengthLightRay;
         float intensity = renderPlace > 1.5 ? saturate(pow(NdotL * 0.5 + 0.6, 3)) + clamp_NdotSV : saturate(pow(NdotL * 0.5 + 0.6, 3));
         float3 sunLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * lerp(1, lengthLightRay, intensity) * intensity;
         float3 anotherLight = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedoColor.xyz, metallic) * sunColor.xyz;
@@ -361,7 +360,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         finalLight.xyz = luminance > 1 ? lightNormalized.xyz * bigLog : finalLight.xyz;
 
-        o.sv_target.xyz = /* albedoColor.xyz * float3(0,0,0) * i.shadowCoords.xyz */  finalLight.xyz + finalColor.xyz;
+        o.sv_target.xyz = finalLight.xyz + finalColor.xyz;
         o.sv_target.w = 1;
         return o;
       }
