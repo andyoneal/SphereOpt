@@ -1,4 +1,5 @@
-﻿using BepInEx;
+﻿using System.Collections.Generic;
+using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
 using System.IO;
@@ -13,6 +14,8 @@ public class SphereOpt : BaseUnityPlugin
     public static ManualLogSource logger;
     private static AssetBundle bundle;
     private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
+
+    private static Dictionary<int, InstDysonShellRenderer> instRenderers = new();
 
     private static AssetBundle Bundle
     {
@@ -34,6 +37,7 @@ public class SphereOpt : BaseUnityPlugin
             return bundle;
         }
     }
+
     private void Awake()
     {
         logger = Logger;
@@ -61,6 +65,11 @@ public class SphereOpt : BaseUnityPlugin
         );
 
         CustomShaderManager.AddCustomShaderDesc(
+            "dysonshell-inst",
+            "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
+        );
+
+        CustomShaderManager.AddCustomShaderDesc(
             "dysonframe",
             "VF Shaders/Dyson Sphere/Frame Inst REPLACE",
             "VF Shaders/Dyson Sphere/Frame Inst"
@@ -71,9 +80,25 @@ public class SphereOpt : BaseUnityPlugin
             "VF Shaders/Dyson Sphere/Node Inst REPLACE",
             "VF Shaders/Dyson Sphere/Node Inst"
         );
-
+        
 
         Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
+        Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereSegmentRenderer));
+    }
+
+    public static InstDysonShellRenderer getInstDysonShellRendererForSphere(DysonSphere ds)
+    {
+        if (!instRenderers.ContainsKey(ds.starData.id))
+        {
+            instRenderers[ds.starData.id] = new InstDysonShellRenderer(ds);
+        }
+        return instRenderers[ds.starData.id];
+    }
+
+    public static void RemoveRenderer(DysonSphere ds)
+    {
+        //instRenderers[ds.starData.id] = null;
+        instRenderers.Remove(ds.starData.id);
     }
 }

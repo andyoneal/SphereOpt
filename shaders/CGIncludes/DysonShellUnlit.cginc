@@ -351,21 +351,58 @@ v2g vert(appdata_full v)
     
     float3 prevLineNormal = _PolygonNArr[polygonIndex - 1].xyz;
     float3 thisLineDir = _PolygonArr[polygonIndex + 1].xyz - _PolygonArr[polygonIndex].xyz;
-    float prevLineIsConvex = sign(dot(thisLineDir, prevLineNormal)) * _Clockwise;
+
+    //float prevLineIsConvex = sign(dot(thisLineDir, prevLineNormal)) * _Clockwise;
     float3 prevLineToPoint = i.objectPos.xyz - _PolygonArr[polygonIndex - 1].xyz;
-    float prevLineInside = sign(dot(prevLineToPoint, prevLineNormal)) * _Clockwise;
+    //float prevLineInside = sign(dot(prevLineToPoint, prevLineNormal)) * _Clockwise;
 
     float3 thisLineNormal = _PolygonNArr[polygonIndex].xyz;
     float3 nextLineDir = _PolygonArr[polygonIndex + 2].xyz - _PolygonArr[polygonIndex + 1].xyz;
-    float nextLineIsConvex = sign(dot(nextLineDir, thisLineNormal)) * _Clockwise;
+    //float nextLineIsConvex = sign(dot(nextLineDir, thisLineNormal)) * _Clockwise;
     float3 nextLineToPoint = i.objectPos.xyz - _PolygonArr[polygonIndex + 1].xyz;
-    float thisLineInside = sign(dot(nextLineToPoint, thisLineNormal)) * _Clockwise;
+    //float thisLineInside = sign(dot(nextLineToPoint, thisLineNormal)) * _Clockwise;
 
     float3 nextLineNormal = _PolygonNArr[polygonIndex + 1].xyz;
     float3 nextnextLineToPoint = i.objectPos.xyz - _PolygonArr[polygonIndex + 2].xyz;
-    float nextLineInside = sign(dot(nextnextLineToPoint, nextLineNormal)) * _Clockwise;
+    //float nextLineInside = sign(dot(nextnextLineToPoint, nextLineNormal)) * _Clockwise;
 
-    float insideBounds = isInside(nextLineIsConvex, prevLineIsConvex, nextLineInside, thisLineInside, prevLineInside);
+    //float insideBounds = isInside(nextLineIsConvex, prevLineIsConvex, nextLineInside, thisLineInside, prevLineInside);
+
+    float prevLineIsConcave = dot(thisLineDir, prevLineNormal);
+    float nextLineIsConcave = dot(nextLineDir, thisLineNormal);
+    // <0 means convex
+    // >0 means concave
+    // 0 means parallel
+    int prevLineIsConvex = prevLineIsConcave > 0 ? 1 : prevLineIsConcave < 0 ? -1 : 0;
+    int nextLineIsConvex = nextLineIsConcave > 0 ? 1 : nextLineIsConcave < 0 ? -1 : 0;
+    //set to int, flip sign. 1=convex, -1=concave
+
+    float prevLineInside = dot(prevLineToPoint, prevLineNormal);
+    float thisLineInside = dot(nextLineToPoint, thisLineNormal);
+    float nextLineInside = dot(nextnextLineToPoint, nextLineNormal);
+    // inside if >0, outside if <0
+
+    // flip sign if counterclockwise (_Clockwise = -1)
+
+    float insideBounds = -1;
+    if (nextLineIsConvex > 0 && prevLineIsConvex > 0) {
+      if (nextLineInside > 0 && thisLineInside > 0 && prevLineInside > 0) {
+        insideBounds = 1;
+      } else {
+        insideBounds = -1;
+      }
+    } else {
+      if (nextLineIsConvex > 0 && prevLineIsConvex <= 0) {
+        insideBounds = nextLineInside > 0 && (prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
+      } else {
+        if (nextLineIsConvex <= 0 && prevLineIsConvex > 0) {
+          insideBounds = prevLineInside > 0 && (thisLineInside > 0 || nextLineInside > 0) ? 1 : -1;      
+        } else {
+          insideBounds = (nextLineInside > 0 || prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
+        }
+      }
+    }
+
 
     if (insideBounds < 0) discard;
     /* end shell/frame bounds check */
