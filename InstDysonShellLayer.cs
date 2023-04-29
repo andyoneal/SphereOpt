@@ -47,8 +47,8 @@ namespace SphereOpt
         public int gridScale;
         public float radius;
 
-        public int progressBaseCursor = 0;
-        public int polygonCursor = 0;
+        public int progressBaseCursor;
+        public int polygonCursor;
         public int cachedHexCount = -1;
 
         private ComputeBuffer hexProgressBuffer;
@@ -74,8 +74,6 @@ namespace SphereOpt
         private static readonly int HexProgressBuffer = Shader.PropertyToID("_HexProgressBuffer");
         private static readonly int ShellBuffer = Shader.PropertyToID("_ShellBuffer");
         private static readonly int PolygonBuffer = Shader.PropertyToID("_PolygonBuffer");
-        private static readonly int DysonEmission = Shader.PropertyToID("_DysonEmission");
-        private static readonly int SunColor = Shader.PropertyToID("_SunColor");
 
         public InstDysonShellLayer(InstDysonShellRenderer renderer, int layerId)
         {
@@ -84,10 +82,10 @@ namespace SphereOpt
             hexProgressPool = new HexProgressData[64];
             hexPool = new List<HexData>();
             shellPool = new ShellData[11];
-            polygonPool = new PolygonData[16];
+            polygonPool = new PolygonData[64];
             hexProgressBuffer = new ComputeBuffer(64, 4);
             shellBuffer = new ComputeBuffer(11, 32);
-            polygonBuffer = new ComputeBuffer(16, 24);
+            polygonBuffer = new ComputeBuffer(64, 24);
             SetProps();
         }
         
@@ -130,9 +128,11 @@ namespace SphereOpt
             layerId = 0;
         }
 
-        public void SetCapacityPolygonPool(int newCap)
+        public void SetCapacityPolygonPool(int nextCount)
         {
+            var newCap = polygonPool.Length + nextCount * 32;
             var destinationArray = new PolygonData[newCap];
+            
             if (polygonPool != null)
             {
                 Array.Copy(polygonPool, destinationArray, polygonPool.Length);
@@ -145,8 +145,7 @@ namespace SphereOpt
         }
 
         public int AddPolygonData(List<VectorLF3> polygon, VectorLF3[] polyn, bool clockwise) {
-            
-            if (polygonPool.Length + polygon.Count >= polygonPool.Length) SetCapacityPolygonPool(polygonPool.Length + polygon.Count * 3);
+            if (polygonCursor + polygon.Count >= polygonPool.Length) SetCapacityPolygonPool(polygon.Count);
             for (var i = 0; i < polygon.Count; i++)
             { 
                 polygonPool[polygonCursor + i].pos = polygon[i];
@@ -187,7 +186,7 @@ namespace SphereOpt
 
         public void AddShellData(int shellId, ShellData shellData)
         {
-            if (shellId >= shellPool.Length) SetCapacityShellPool(shellId + 10);
+            if (shellId >= shellPool.Length) SetCapacityShellPool(shellId + 16);
             shellPool[shellId] = shellData;
             shellBufferIsDirty = true;
         }
@@ -266,8 +265,8 @@ namespace SphereOpt
                 props.SetBuffer(HexProgressBuffer, hexProgressBuffer);
                 props.SetBuffer(ShellBuffer, shellBuffer);
                 props.SetBuffer(PolygonBuffer, polygonBuffer);
-                props.SetColor(DysonEmission, instDysonShellRenderer.dysonSphere.emissionColor);
-                props.SetColor(SunColor, instDysonShellRenderer.dysonSphere.sunColor);
+                //props.SetColor(DysonEmission, instDysonShellRenderer.dysonSphere.emissionColor);
+                //props.SetColor(SunColor, instDysonShellRenderer.dysonSphere.sunColor);
 
                 //propsAreDirty = false;
             }

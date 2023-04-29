@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityMeshSimplifier;
@@ -43,9 +42,18 @@ namespace SphereOpt
                 lodMeshes[i][0] = DysonSphereSegmentRenderer.protoMeshes[i];
                 meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
                 var options = SimplificationOptions.Default;
-                options.PreserveBorderEdges = true;
-                options.PreserveUVFoldoverEdges = true;
-                options.PreserveUVSeamEdges = false;
+                if (i == 0)
+                {
+                    options.PreserveBorderEdges = true;
+                    options.PreserveUVFoldoverEdges = false;
+                    options.PreserveUVSeamEdges = true;
+                }
+                else
+                {
+                    options.PreserveBorderEdges = true;
+                    options.PreserveUVFoldoverEdges = true;
+                    options.PreserveUVSeamEdges = false;    
+                }
                 options.MaxIterationCount = 1000;
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
@@ -187,7 +195,6 @@ namespace SphereOpt
                     layer = 21;
                     break;
             }
-
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
             Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
             
@@ -214,10 +221,10 @@ namespace SphereOpt
             Matrix4x4 v = cam.worldToCameraMatrix;
             Matrix4x4 p = cam.projectionMatrix;
             frameLODShader.SetMatrix("_UNITY_MATRIX_VP", p * v);
+            float fov = cam.fieldOfView;
+            frameLODShader.SetFloat("_FOV", fov);
             var mpb = new MaterialPropertyBlock();
             mpb.SetVectorArray(LayerRotations, layerRotations);
-            mpb.SetColor(SunColor, dysonSphere.sunColor);
-            mpb.SetColor(DysonEmission, dysonSphere.emissionColor);
             for (var b = 0; b < DysonSphereSegmentRenderer.totalProtoCount; b++)
             {
                 if (batches[b] == null || batches[b].cursor <= 0) continue;
@@ -237,7 +244,8 @@ namespace SphereOpt
                 {
                     ComputeBuffer.CopyCount(lodBatchBuffers[b][i], argBuffer, (b * 15 + i * 5 + 1) * 4);
                 }
-
+                instMats[b].SetColor(SunColor, dysonSphere.sunColor);
+                instMats[b].SetColor(DysonEmission, dysonSphere.emissionColor);
                 mpb.SetBuffer(InstBuffer, batches[b].buffer);
                 for (int j = 0; j < 3; j++)
                 {

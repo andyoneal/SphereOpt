@@ -15,6 +15,14 @@ internal class Patch_DysonShell
         else CustomShaderManager.ApplyCustomShaderToMaterial(__instance.material, "dysonshell-small");
     }
 
+    [HarmonyPatch(typeof(DysonShell), "SetMaterialStaticVars")]
+    [HarmonyPrefix]
+    private static bool DysonShell_SetMaterialStaticVars()
+    {
+        return false;
+    }
+    
+
     [HarmonyPatch(typeof(DysonShell), "GenerateModelObjects")]
     [HarmonyPostfix]
     private static void DysonShell_GenerateModelObjects(DysonShell __instance)
@@ -29,16 +37,15 @@ internal class Patch_DysonShell
         for (int i = 0; i < verts.Length; i++)
         {
             var hexPos = verts[i];
-            var mesh = __instance.mesh;
             var hex = new InstDysonShellLayer.HexData
             {
                 pos = hexPos,
                 shellIndex = shellIndex,
-                nodeIndex = (int)mesh.uv[i].x,
-                vertFillOrder = mesh.uv[i].y,
-                closestPolygon = __instance.clockwise ? (int)mesh.uv2[i].y : polygon.Count - (int)mesh.uv2[i].y - 1,
+                nodeIndex = (int)__instance.uvs[i].x,
+                vertFillOrder = __instance.uvs[i].y,
+                closestPolygon = __instance.clockwise ? (int)__instance.uv2s[i].y : polygon.Count - (int)__instance.uv2s[i].y - 1,
                 axialCoords_xy =
-                    (uint)((int)__instance.mesh.uv3[i].x & 0x0000ffff | (int)__instance.mesh.uv3[i].y << 16)
+                    (uint)(((__instance.vkeys[i] >> 16) - 10000) & 0x0000ffff | ((__instance.vkeys[i] & 0xFFFF) - 10000) << 16)
             };
             instShellLayer.hexPool.Add(hex);
         }
@@ -74,8 +81,6 @@ internal class Patch_DysonShell
             instShellLayer.AddHexProgressData(progressBaseIndex + i, hexProgress);
         }
         instShellLayer.hexProgressBufferIsDirty = true;
-
-
     }
 
     [HarmonyPatch(typeof(DysonShell), "Construct")]

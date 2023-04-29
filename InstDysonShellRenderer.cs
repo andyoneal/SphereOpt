@@ -38,6 +38,8 @@ namespace SphereOpt
         private static readonly int GlobalDSSunPosition = Shader.PropertyToID("_Global_DS_SunPosition");
         private static readonly int GlobalDSSunPositionMap = Shader.PropertyToID("_Global_DS_SunPosition_Map");
         private static readonly int ObjectToWorld = Shader.PropertyToID("_ObjectToWorld");
+        private static readonly int SunColor = Shader.PropertyToID("_SunColor");
+        private static readonly int DysonEmission = Shader.PropertyToID("_DysonEmission");
 
 
         private static void SetupMesh()
@@ -187,6 +189,8 @@ namespace SphereOpt
             }
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
             Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
+            HexMat.SetColor(SunColor, dysonSphere.sunColor);
+            HexMat.SetColor(DysonEmission, dysonSphere.emissionColor);
             var pos = place == ERenderPlace.Universe ? sunPos : sunPosMap;
 
             for (var i = 1; i <= 10; i++)
