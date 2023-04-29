@@ -30,7 +30,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       #pragma vertex vert
       #pragma fragment frag
       #pragma target 5.0
-      //#pragma enable_d3d11_debug_symbols
+      #pragma enable_d3d11_debug_symbols
 
     struct PolygonData
     {
@@ -201,7 +201,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float4 linear_color = float4(GammaToLinearSpace(gamma_color.xyz), gamma_color.w);
 
     uint packedAxialCoords = _HexBuffer[instanceID].axialCoords_xy;
-    int2 axialCoords;// = (packedAxialCoords >> int2(0,16)) & int2(65535, 65535);
+    int2 axialCoords;
     axialCoords.x = (int)(packedAxialCoords << 16) >> 16;
     axialCoords.y = (int)(packedAxialCoords & 0xffff0000) >> 16;
 
@@ -213,7 +213,6 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float polygonIndex = _ShellBuffer[shellIndex].polygonIndex;
     float polyCount = _ShellBuffer[shellIndex].polyCount;
     float state = _ShellBuffer[shellIndex].state;
-    //float clockwise = _ShellBuffer[shellIndex].clockwise;
     uint hexProgressIndex = progressBaseIndex + nodeIndex;
     float nodeProgress = _HexProgressBuffer[hexProgressIndex].progress;
     float scaleProgress = saturate(((1 + (0.28 / _Scale)) * nodeProgress - pow(vertFillOrder, 1.25)) / (0.28 / _Scale));
@@ -418,7 +417,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     
     float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier);
     float3 emissionOutwardFacing = lerp(emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz, colorOutwardFacing, i.color.w);
-    float3 dysonEmission = viewingOutwardFacingSide ? float3(0,0,0) : _DysonEmission.xyz;
+    float3 dysonEmission = viewingOutwardFacingSide ? float3(1,1,1) : _DysonEmission.xyz;
     float3 emissionSunFacing = float3(3,3,3) * (emissionTexTwo.x + emissionTex.x) * dysonEmission.xyz;
     float3 emission = viewingOutwardFacingSide ? emissionOutwardFacing.xyz : emissionSunFacing.xyz;
 
