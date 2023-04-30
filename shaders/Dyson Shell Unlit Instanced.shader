@@ -30,14 +30,12 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       #pragma vertex vert
       #pragma fragment frag
       #pragma target 5.0
-      #pragma enable_d3d11_debug_symbols
+      //#pragma enable_d3d11_debug_symbols
 
     struct PolygonData
     {
         float3 pos;
         float3 normal;
-        //float pad0;
-        //float pad1;
     };
 
     struct HexProgressData
@@ -62,7 +60,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
         int progressBaseIndex;
         int polyCount;
         int polygonIndex;
-        //int clockwise;
         float3 center;
     };
 
@@ -93,9 +90,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       float _GridSize;
       float _Radius;
       float4x4 _ObjectToWorld;
-      
-      //float4 _PolygonArr[1024]; // points that make up the shape of the polygon. repeated PolyCount times.
-      //float4 _PolygonNArr[1024]; // normals
 
       sampler2D _NoiseTex;
       sampler2D _MainTex;

@@ -146,15 +146,15 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         o.tbnw_matrix_x.x = worldTangent.x;
         o.tbnw_matrix_x.y = worldBinormal.x;
         o.tbnw_matrix_x.z = worldNormal.x;
-        o.tbnw_matrix_x.w = uPos.x;
+        o.tbnw_matrix_x.w = worldPos.x;
         o.tbnw_matrix_y.x = worldTangent.y;
         o.tbnw_matrix_y.y = worldBinormal.y;
         o.tbnw_matrix_y.z = worldNormal.y;
-        o.tbnw_matrix_y.w = uPos.y;
+        o.tbnw_matrix_y.w = worldPos.y;
         o.tbnw_matrix_z.x = worldTangent.z;
         o.tbnw_matrix_z.y = worldBinormal.z;
         o.tbnw_matrix_z.z = worldNormal.z;
-        o.tbnw_matrix_z.w = uPos.z;
+        o.tbnw_matrix_z.w = worldPos.z;
 
         o.u_v_index.xy = v.texcoord.xy;
         o.u_v_index.z = instIndex;

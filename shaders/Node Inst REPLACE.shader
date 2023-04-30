@@ -18,7 +18,6 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
     Pass {
       LOD 200
       Tags {"RenderType" = "DysonNode"}
-      //Keywords {"DIRECTIONAL" "LIGHTPROBE_SH"}
       GpuProgramID 7626
       CGPROGRAM
       #pragma vertex vert
@@ -74,7 +73,6 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
 
       StructuredBuffer<Segment> _InstBuffer;
       StructuredBuffer<uint> _InstIndexBuffer;
-      //StructuredBuffer<float4> _LayerBuffer;
 
       float4 _SunColor;
       float4 _DysonEmission;
@@ -103,8 +101,6 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
 
         uint instIndex = _InstIndexBuffer[instanceID];
         
-        //_Size is always 100
-        // float3 vertPos = _Size * v.vertex.xyz;
         float3 vertPos = 100 * v.vertex.xyz;
 
         uint layer = _InstBuffer[instIndex].layer;
@@ -156,32 +152,9 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
         float3 worldNormal = mul((float3x3)unity_ObjectToWorld, transformNormal.xyz);
         float3 worldTangent = mul((float3x3)unity_ObjectToWorld, transformTangent.xyz);
 
-        //float3 worldPos = rotate_vector_fast(transformPos.xyz, _LayerRotations[layer].xyzw);
-        //float3 worldNormal = rotate_vector_fast(transformNormal.xyz, _LayerRotations[layer].xyzw);
-        //float3 worldTangent = rotate_vector_fast(transformTangent.xyz, _LayerRotations[layer].xyzw);
-
-        //float frameRadius = length(worldPos.xyz);
-
-        //float falloffDistance = pow(1 + min(4, max(0, (5000 / frameRadius) - 0.2)), 2);
-
         float invFrameRadius = rsqrt(dot(pos0.xyz, pos0.xyz));
 
         float falloffDistance = pow(1 + min(4, max(0, (5000 * invFrameRadius) - 0.2)), 2);
-
-        /*
-        if (renderPlace < 0.5) {
-          float4 localRot = _LocalRot.xyzw;
-          localRot.w = -localRot.w;
-          worldPos = rotate_vector_fast(worldPos.xyz, localRot);
-          worldNormal = rotate_vector_fast(worldNormal.xyz, localRot);
-          worldTangent = rotate_vector_fast(worldTangent.xyz, localRot);
-        }
-        */
-        
-
-        //float3 universePos = renderPlace < 1.5 ? worldPos.xyz / 4000.0 + _Global_DS_SunPosition_Map.xyz : worldPos.xyz / 4000.0;
-        //universePos = renderPlace < 0.5 ? worldPos.xyz + _Global_DS_SunPosition.xyz : universePos.xyz;
-        //float3 universePos = renderPlace < 0.5 ? worldPos : worldPos / 4000.0;
 
         float3 lightPos_Normal = normalize(worldPos.xyz - _Global_DS_SunPosition.xyz) * falloffDistance;
         float3 lightPos_DysonMap = normalize(worldPos.xyz - _Global_DS_SunPosition_Map.xyz) * falloffDistance;
