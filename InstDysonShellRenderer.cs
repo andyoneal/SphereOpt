@@ -26,7 +26,7 @@ namespace SphereOpt
         }
 
         private ComputeBuffer argsBuffer;
-        private uint[] args = new uint[50];
+        private uint[] args = new uint[55];
 
         private InstDysonShellLayer[] instShellLayers = new InstDysonShellLayer[11];
 
@@ -118,8 +118,8 @@ namespace SphereOpt
             gameData = dysonSphere.gameData;
             starData = dysonSphere.starData;
 
-            argsBuffer = new ComputeBuffer(10, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-            for (int i = 0; i < 10; i++)
+            argsBuffer = new ComputeBuffer(11, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            for (int i = 0; i <= 10; i++)
             {
                 args[i * 5 + 0] = HexMesh.GetIndexCount(0);
                 args[i * 5 + 1] = 0u;
