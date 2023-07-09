@@ -1,6 +1,6 @@
 # SphereOpt
 
-**SphereOpt v0.8.0 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
+**SphereOpt v0.8.1 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
 
 Improves rendering of Dyson Shells by drastically reducing the amount of data sent to the gpu per shell. Impact is larger depending on the number of shells in your Dyson Sphere(s).
 
