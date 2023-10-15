@@ -69,7 +69,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 time_state_emiss : TEXCOORD5;
                 float3 worldPos : TEXCOORD6;
                 float3 shadows : TEXCOORD7;
-                //float4 screenPos : TEXCOORD9;
                 UNITY_SHADOW_COORDS(9)
                 float4 unk : TEXCOORD10;
             };
@@ -253,7 +252,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 if (posHeight > 0.1) {
                   upDir.xyz = pos / posHeight; //r2.xyz
-                  float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x; //game shader uses a different sample? sample_l vs sample_l_indexable //r2.w
+                  float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x;
                   float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight; //r1.x
                   worldVPos.xyz = adjustHeight * upDir.xyz + worldVPos.xyz; //r5
                   lodDist = saturate(0.01 * (distance(pos.xyz, _WorldSpaceCameraPos) - 180)); //r1.x
@@ -275,7 +274,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 o.shadows.xyz = ShadeSH9(float4(worldVNormal, 1.0));
                 
                 o.pos.xyzw = clipPos.xyzw;
-                //o.screenPos.xyzw = ComputeScreenPos(clipPos.xyzw);
                 UNITY_TRANSFER_SHADOW(o, float(0,0))
                 
                 o.TBN0.x = worldTangent.x; //t.x
@@ -310,8 +308,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float emissionPower = inp.time_state_emiss.z;
                 float3 worldPos1 = inp.worldPos.xyz;
                 float3 shadows = inp.shadows.xyz;
-                //float4 screenPos = inp.screenPos.xyzw;
               
+                // Choose color based on the veinType
                 float3 veinColor = float3(0,0,0);
                 if (veinType < 1.05 && 0.95 < veinType) { //iron
                   veinColor.xyz = _Color1.xyz;
@@ -358,7 +356,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 albedo = colorB * pow(lerp(1.0, occTex.x, occTex.y), _OcclusionPower); //r0.xyz
                 
                 float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(uv, 0, -1)));
-                
                 float3 normal;
                 normal.xy = unpackedNormal.xy;
                 normal.z = unpackedNormal.z;
@@ -366,14 +363,14 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float4 emmTex = tex2Dbias(_EmissionTex, float4(uv,0,-1)); //r3.xyzw
                 float emmJitTex = UNITY_SAMPLE_TEX2D(_EmissionJitterTex, float2(time, 0)).x; //r0.w
                 
-                float sat_Type = saturate(veinType); //r2.w //why? so EVeinType.None has no emmission?
+                float sat_Type = saturate(veinType); //r2.w
                 
                 float canEmit = (int)(emissionPower > 0.1) | (int)(_EmissionSwitch < 0.5) ? 1.0 : 0.0; //r4.x
                 
                 normal.xy = _NormalMultiplier * normal.xy;
                 
+                //Calculate how much of the planet's theme/biomo should be included
                 float2 g_heightMap = UNITY_SAMPLE_TEXCUBE(_Global_LocalPlanetHeightmap, normalize(worldPos1.xyz)).xy; //r4.yz
-                
                 float frac_heightMap = frac(g_heightMap.y); //r1.w
                 float int_heightMap = g_heightMap.y - frac_heightMap; //r4.z
                 float biomoThreshold = (frac_heightMap * frac_heightMap) * (frac_heightMap * -2.0 + 3.0) + int_heightMap; //r1.w
@@ -386,10 +383,9 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 biomoColor.xyz = biomoColor.xyz * _BiomoMultiplier;
                 float heightOffset = saturate((_BiomoHeight - (length(worldPos1.xyz) - (g_heightMap.x + _Global_Planet_Radius))) / _BiomoHeight); //r1.y
                 heightOffset = biomoColor.w * pow(heightOffset, 2);
-                
                 float3 multipliedAlbedo = albedo.xyz * _AlbedoMultiplier; //r4.yzw
-                albedo = lerp(biomoColor.xyz, biomoColor.xyz * multipliedAlbedo, _Biomo) - albedo.xyz * _AlbedoMultiplier;
-                albedo.xyz = heightOffset * albedo.xyz + multipliedAlbedo;
+                biomoColor = lerp(biomoColor.xyz, biomoColor.xyz * multipliedAlbedo, _Biomo);
+                albedo.xyz = lerp(multipliedAlbedo, biomoColor, heightOffset);
                 
                 normal.xyz = normalize(normal.xyz);
                 
@@ -406,9 +402,9 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 emissionColor.xyz = emissionColor.xyz * canEmit; //r3.xyz
                 
                 float3 worldPos = float3(inp.TBN0.w, inp.TBN1.w, inp.TBN2.w); //r4.yzw
-                UNITY_LIGHT_ATTENUATION(atten, inp, worldPos); //r1.z //missing the last part with the sample.
+                UNITY_LIGHT_ATTENUATION(atten, inp, worldPos); //r1.z
                 
-                float3 posToCam = _WorldSpaceCameraPos.xyz - worldPos.xyz; //r5.xyz //viewdir? or is that the opposite
+                float3 posToCam = _WorldSpaceCameraPos.xyz - worldPos.xyz; //r5.xyz
                 
                 float3 viewDir = normalize(posToCam);//r6.xyz
                 
@@ -424,12 +420,12 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float perceptualRoughness = 1 - smoothness * 0.97; //r1.y
                 
                 float3 lightDir = _WorldSpaceLightPos0;
-                float3 halfDir = normalize(viewDir + lightDir); //r4.xyz //?
+                float3 halfDir = normalize(viewDir + lightDir); //r4.xyz
                 
                 float roughness = perceptualRoughness * perceptualRoughness; //r0.w
                 float roughnessSqr = roughness * roughness; //r2.w == "a2"
                 
-                float unclamped_nDotL = dot(worldNormal, lightDir); //r3.w //LambertTerm //check this. maybe not lightdir
+                float unclamped_nDotL = dot(worldNormal, lightDir); //r3.w
                 float nDotL = max(0, unclamped_nDotL); //r4.w
                 float unclamped_nDotV = dot(worldNormal, viewDir);
                 float unclamped_nDotH = dot(worldNormal.xyz, halfDir);
@@ -439,7 +435,16 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float vDotH = max(0, unclamped_vDotH); //r4.x
                 float cubed_nDotL = pow(unclamped_nDotL * 0.35 + 1, 3); //r3.w
                 
+                /* upDotL: angle from the object to the sun.
+                    1 = sun is directly above
+                    0 = sun is directly perpendicular.
+                   -1 = sun is on opposite side of the planet */
                 float upDotL = dot(upDir.xyz, lightDir.xyz); //r4.y
+                
+                /* nDotL: angle from the normal to the upward direction from the object.
+                    1 = surface faces directly up
+                    0 = surface faces the side
+                   -1 = surface faces down*/
                 float nDotUp = dot(worldNormal.xyz, upDir.xyz); //r4.z
                 
                 float upDirMagSqr = dot(upDir.xyz, upDir.xyz); //r5.z
@@ -471,7 +476,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float reflectivity = scaled_metallicLow * gloss; //r1.y
                 float3 reflectColor = g_PGI * reflectivity; //r6.xyz
                 
-                //redo?
                 float3 sunsetColor = float3(1, 1, 1); //r7.xyz
                 UNITY_BRANCH
                 if (upDotL <= 1) {
@@ -519,27 +523,25 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 scaled_ambientColor = cubed_nDotL * (scaled_nDotUp * ambientColor); //r8.xyz
                 scaled_ambientColor = (_AmbientInc + 1.0) * scaled_ambientColor;
                 
+                // Add mecha headlamp light. Only active during night.
                 float headlampIsOn = _Global_PointLightPos.w >= 0.5; //r1.z
                 float length_headlamp = length(_Global_PointLightPos.xyz) - 5.0; //r2.w
-                float headlampVisible = saturate(length_headlamp); //r3.w //I think that's what it means?
+                float headlampVisible = saturate(length_headlamp); //r3.w
                 float headlampDimInDaylight = saturate(dot(-upDir.xyz, _WorldSpaceLightPos0.xyz) * 5.0); //r4.x
                 float headlampLightIntensity = headlampVisible * headlampDimInDaylight; //r3.w
-                
                 float3 rayObjToPlayer = _Global_PointLightPos.xyz - upDir.xyz * length_headlamp; //r9.xyz
                 float distObjToPlayer = length(rayObjToPlayer.xyz); //r2.w
                 float falloffHeadlampLight = pow(max((20.0 - distObjToPlayer) * 0.05, 0),2); //r4.x //inverse log falloff of headlamp light from player. max distance is 20.
-                
                 float playerIsDirectlyOnObj = distObjToPlayer < 0.001; //r4.z
                 float3 fallbackHeadlampLight = headlampLightIntensity * float3(1.3, 1.1, 0.6); //r10.xyz
                 float3 dirObjToPlayer = rayObjToPlayer.xyz / distObjToPlayer; //r9.xyz
-                
                 float plDotN = saturate(dot(dirObjToPlayer.xyz, worldNormal.xyz)); //angle between player and Normal
                 headlampLightIntensity = headlampLightIntensity * (falloffHeadlampLight * plDotN); //r2.x
-                
                 float3 headlampLight = playerIsDirectlyOnObj ? fallbackHeadlampLight : headlampLightIntensity * float3(1.3, 1.1, 0.6); //r2.xyz
-                headlampLight = headlampIsOn ? headlampLight.xyz : float3(0,0,0); //headlampIsOn AND r2.xyz;
+                headlampLight = headlampIsOn ? headlampLight.xyz : float3(0,0,0); AND r2.xyz;
                 float3 headlampLightColor = nDotL * lightColor.xyz + headlampLight.xyz; //r2.xyz
                 headlampLightColor = albedo.xyz * headlampLightColor.xyz; //r2.xyz //albedoLight
+                
                 
                 float metalReverseFalloff = pow(metallicHighLowM1.y, 0.6); //r1.z //[.9071 - 0] log falloff but reversed?
                 float3 specularColor = _SpecularColor.xyz * lerp(float3(1.0, 1.0, 1.0), albedo.xyz, metallicLow); //r9.xyz
@@ -563,7 +565,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 finalColor = finalColor.xyz * metallicInvFalloff + (headlampLightColor.xyz * metalReverseFalloff + specularColor);
                 finalColor = lerp(finalColor, reflectColor.xyz * albedo.xyz, reflectivity);
-                
                 
                 float colorIntensity = dot(finalColor.xyz, float3(0.3, 0.6, 0.1)); //r0.w
                 finalColor = colorIntensity > 1.0 ? finalColor / colorIntensity * (log(log(colorIntensity) + 1) + 1) : finalColor;
