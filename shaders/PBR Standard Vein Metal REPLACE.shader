@@ -59,20 +59,39 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             #include "AutoLight.cginc"
             #include "CGIncludes/DSPCommon.cginc"
             
+            /* v2f: struct of data that is output from the vertex shader (runs once per vertex) to the
+                input of the fragment/pixel shader (runs once per pixel on screen).  */
             struct v2f
-            {
+            {   
+                    /* pos: clip space position. essentially, the position on the screen. */
                 float4 pos : SV_POSITION0;
-                float4 TBN0 : TEXCOORD0;
-                float4 TBN1 : TEXCOORD1;
-                float4 TBN2 : TEXCOORD2;
-                float3 uv_lodDist : TEXCOORD3;
+                    /* TBN[0,1,2]: Tangent, Binormal, Normal. Packed into 3 variables, which will act as
+                        a transformation matrix on the normal texture. I don't fully understand this.
+                        Also packs World Position into the last float since there is space left */
+                float4 TBN0 : TEXCOORD0; // (Tan.x, Bin.x, Norm.x, wPos.x)
+                float4 TBN1 : TEXCOORD1; // (Tan.y, Bin.y, Norm.y, wPos.y)
+                float4 TBN2 : TEXCOORD2; // (Tan.z, Bin.z, Norm.z, wPos.z)
+                    /* uv_lodDist:  UV coords (basically x,y coordinates for a pixel in a texture) and
+                        camera distance from the object */
+                float3 uv_lodDist : TEXCOORD3; // (u, v, lodDist)
+                    /* upDir: literally the upward direction relative to the object. "Up" depends
+                        where on the planet the object is located.*/
                 float3 upDir : TEXCOORD4;
+                    /* time_state_emiss: time and state passed directly from the _AnimBuffer and a
+                        toggle for if the object "emission" (aka glow) should be active. (Not relevant
+                        for metal veins)*/
                 float3 time_state_emiss : TEXCOORD5;
+                    /* worldPos: for some reason, a second copy of World Position. */
                 float3 worldPos : TEXCOORD6;
-                float3 shadows : TEXCOORD7;
+                    /* indirectLight: Unity's built in indirect lighting. Don't mess with this. */
+                float3 indirectLight : TEXCOORD7;
+                    /* macro for adding needed shadow data. Don't mess with this */
                 UNITY_SHADOW_COORDS(9)
+                    /* unk: unknown and not actually used, as far as I can tell. */
                 float4 unk : TEXCOORD10;
             };
+            
+            /* fout: the output of the fragment/pixel shader. Basically, the color of the pixel in RGBA */
             struct fout
             {
                 float4 sv_target : SV_Target0;
@@ -83,6 +102,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             StructuredBuffer<AnimData> _AnimBuffer;
             StructuredBuffer<float3> _ScaleBuffer;
             
+            /* All of the properties and globals that will be used in the shader */
             float4 _LightColor0;
             float _UseScale;
             float4 _Global_AmbientColor0;
@@ -126,6 +146,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             float _BiomoHeight;
             float4 _SpecularColor;
             
+            /* Textures used in the shader */
             sampler2D _MainTexA;
             sampler2D _MainTexB;
             sampler2D _OcclusionTex;
@@ -136,17 +157,15 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             UNITY_DECLARE_TEXCUBE(_Global_LocalPlanetHeightmap);
             UNITY_DECLARE_TEXCUBE(_Global_PGI);
             
+            /* What image is reflected in metallic surfaces and how reflective is it? */
             inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
                 float upDirMagSqr = dot(upDir, upDir);
                 bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
-                
                 float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
                 bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
-                
                 float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
                 
                 float3 worldReflect = reflect(-viewDir, worldNormal);
-                
                 float3 reflectDir;
                 reflectDir.x = dot(worldReflect.zxy, -xaxis);
                 reflectDir.y = dot(worldReflect, upDir);
@@ -165,44 +184,53 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             {
                 v2f o;
                 
-                
+                /* _InstBuffer: an array of Ids (uints) populated by the LOD compute shader, which determines
+                    which instances of the object need to be rendered. The compute shader runs each frame, adds
+                    Ids for use as indices on _InstBufffer, and provides a final count 'n'. The model will be
+                    rendered 'n' times, with the built in 'System Value' SV_InstanceID iterating from 0 to n-1.
+                    
+                    objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
+                    pos: xyz position of this instance in the world
+                    rot: quaternion rotation */
                 float objIndex = _IdBuffer[instanceID]; //r0.x
                   
                 /* _InstBuffer: an array of GPUOBJECTs, which is a struct defined in the game code.
-                        This buffer stores all of the position and rotation info for every copy of the model.
-                        That way, the game can issue a single draw call and draw every instance at once.
-                        
-                        objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
-                        pos: xyz position of this instance in the world
-                        rot: quaternion rotation */
-                float objId = _InstBuffer[objIndex].objId; //r1.x
-                float3 pos = _InstBuffer[objIndex].pos; //r1.yzw
-                float4 rot = _InstBuffer[objIndex].rot; //r2.xyzw
+                    This buffer stores all of the position and rotation info for every copy of the object,
+                    even if it will not be rendered this frame. _InstBuffer provides the Ids of the instances
+                    that need to be rendered. That way the game can make one draw call for each object
+                    and the GPU can do the rest of the work.
+                    
+                    objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
+                    pos: xyz position of this instance in the world
+                    rot: quaternion rotation */
+                float objId = _InstBuffer[objIndex].objId;
+                float3 pos = _InstBuffer[objIndex].pos;
+                float4 rot = _InstBuffer[objIndex].rot;
                 
                 /* _AnimBuffer: an array of AnimData, which is a struct defined in the game code.
-                        Typically used for animation data, but frequently used as a place to put extra data.
-                        For example, in metal veins, state is used to store VeinType, which is used to select
-                        the right color. Nothing to do with animation.
-                        
-                        time: 
-                        prepare_length:
-                        working_length:
-                        state:
-                        power: */
-                float time = _AnimBuffer[objId].time; //r3.x
-                float prepare_length = _AnimBuffer[objId].prepare_length; //r3.y
-                float working_length = _AnimBuffer[objId].working_length; //r3.z
-                uint state = _AnimBuffer[objId].state; //r3.w
-                float power = _AnimBuffer[objId].power; //r0.y
+                    Typically used for animation data, but frequently used as a place to put extra data.
+                    For example, in metal veins, state is used to store VeinType, which is used to select
+                    the right color. Nothing to do with animation.
+                    
+                    time: 
+                    prepare_length:
+                    working_length:
+                    state:
+                    power: */
+                float time = _AnimBuffer[objId].time;
+                float prepare_length = _AnimBuffer[objId].prepare_length;
+                float working_length = _AnimBuffer[objId].working_length;
+                uint state = _AnimBuffer[objId].state;
+                float power = _AnimBuffer[objId].power;
                 
                 /* Resize/Scale: mostly used for randomizing size of vegetation
                     If _UseScale is on, grab the scaling factor from _ScaleBuffer and use to scale
                     both the vertices and the normals. For some reason, tangent isn't scaled.*/
-                float3 scale = _ScaleBuffer[objIndex]; //r4.xyz;
+                float3 scale = _ScaleBuffer[objIndex];
                 bool useScale = _UseScale > 0.5;
-                float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz; //r5.xyz
-                float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz; //r4.xyz
-                float3 scaledVTan = v.tangent.xyz; //r6
+                float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz;
+                float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz;
+                float3 scaledVTan = v.tangent.xyz;
                 
                 /* DSP stores some animation data in separate Verta files, which contain vertex positions(optionally, also
                     normals and tangents) for each frame of an animation. This will replace the current values for each, if
@@ -212,62 +240,86 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 /* Use the position and rotation data for this instance to put it in the right position in the world.
                     Each vertex, normal, and tangent needs to be rotated, but only the positions of the vertex need to be
                     moved. This is because normal and tangents are directions, not points. */
-                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz; //r5.xyz
-                float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot); //r7.xyz
-                float3 worldTangent = rotate_vector_fast(scaledVTan, rot); //r0.xyz
+                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz;
+                float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot);
+                float3 worldTangent = rotate_vector_fast(scaledVTan, rot);
                 
                 /* posHeight: Since the position of the instance in the world is likely the surface of the planet, (0,0,0) in
                     world space is the center of the planet, and all rocky planets are have a radius of 200, length(pos) is
                     going to be (roughly) 200 almost every time. */
-                float posHeight = length(pos); //r1.x
+                float posHeight = length(pos);
                 
+                /* upDir: literally the upwards direction relative to the object. Default to (0,1,0) then calculate based
+                    on the actual position of the object below. */
+                float3 upDir = float3(0,1,0);
                 
-                float3 upDir = float3(0,1,0); //r2.xyz
-                float lodDist = 0; //r1.x
+                /* lodDist: a distance factor (object to camera) used to control level of detail*/
+                float lodDist = 0;
                 
+                // Just checking to see if the value of pos is nonsense.
                 if (posHeight > 0.1) {
-                  upDir.xyz = pos / posHeight; //r2.xyz
-                  float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x;
-                  float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight; //r1.x
-                  worldVPos.xyz = adjustHeight * upDir.xyz + worldVPos.xyz; //r5
-                  lodDist = saturate(0.01 * (distance(pos.xyz, _WorldSpaceCameraPos) - 180)); //r1.x
+                    
+                    /* Since (0,0,0) in world space is the center of the planet, the pos vector points upward!
+                        Normalize pos to make it a "direction" rather than a point in 3D space */
+                    upDir.xyz = normalize(pos);
+                    
+                    /* g_heightMap: a texture containing the height map of the land on the planet, relative to sea level. */
+                    float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x;
+                    
+                    /* If pos is slightly below ground or floating, bring it to surface level. Adjust along our upDir axis. */
+                    float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight;
+                    worldVPos.xyz = adjustHeight * upDir.xyz + worldVPos.xyz;
+                    
+                    /* calculate lodDist. Essentially 0 = close, 1 = far */
+                    lodDist = saturate(0.01 * (distance(pos.xyz, _WorldSpaceCameraPos) - 180));
                 }
                 
-                worldVPos.xyz = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz; //r4.xyz
-                worldVNormal.xyz = lerp(normalize(worldVNormal), upDir.xyz, 0.2 * lodDist); //r6.xyz
+                /* Usually converts vertex position to world space, but we already have it world space thanks to
+                    _InstBuffer.pos and .rot. Does nothing. */
+                worldVPos.xyz = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz;
                 
-                o.time_state_emiss.y = state;
-                o.time_state_emiss.z = lerp(1, power, _EmissionUsePower);
+                /* Slightly adjusts our normals towards the upward direction if the camera is far. Not clear to me why
+                    you would want this. Maybe it looks better in the planet map view? */
+                worldVNormal.xyz = lerp(normalize(worldVNormal), upDir.xyz, 0.2 * lodDist);
                 
+                // Unity can convert our World Position to ClipPos for us. 
                 float4 clipPos = UnityObjectToClipPos(worldVPos);
                 
-                worldVNormal = UnityObjectToWorldNormal(worldVNormal.xyz); //r6.xyz
-                worldTangent = float4(UnityObjectToWorldDir(worldTangent.xyz), v.tangent.w); //r0.xyz as yzx
-                float3 worldBinormal = calculateBinormal(float4(worldTangent.xyz, v.tangent.xyz), worldVNormal);
+                /* Again, usually would convert normals and tangents to world space, but we already have them there.
+                    Does nothing. */
+                worldVNormal = UnityObjectToWorldNormal(worldVNormal.xyz);
+                worldTangent = float4(UnityObjectToWorldDir(worldTangent.xyz), v.tangent.w);
                 
-                o.shadows.xyz = ShadeSH9(float4(worldVNormal, 1.0));
+                /* Use math to calulate binormals using normals and tangents. Basically, the binormal is the cross product
+                    of the normal and tangent. */
+                float3 worldBinormal = calculateBinormal(float4(worldTangent.xyz, v.tangent.w), worldVNormal);
                 
-                o.pos.xyzw = clipPos.xyzw;
+                /* Unity's built-in indirect lighting calculation */
+                o.indirectLight.xyz = ShadeSH9(float4(worldVNormal, 1.0));
+                
+                /* pass all of our values to the fragment/pixel shader */
                 UNITY_TRANSFER_SHADOW(o, float(0,0))
-                
-                o.TBN0.x = worldTangent.x; //t.x
-                o.TBN0.y = worldBinormal.x; //b.x
-                o.TBN0.z = worldVNormal.x; //n.x
-                o.TBN0.w = worldVPos.x; //p.x
-                o.TBN1.x = worldTangent.y; //t.y
-                o.TBN1.y = worldBinormal.y; //b.y
-                o.TBN1.z = worldVNormal.y; //n.y
-                o.TBN1.w = worldVPos.y; //p.y
-                o.TBN2.x = worldTangent.z; //t.z
-                o.TBN2.y = worldBinormal.z; //b.z
-                o.TBN2.z = worldVNormal.z; //n.z
-                o.TBN2.w = worldVPos.z; //p.z
-                o.unk.xyzw = float4(0,0,0,0);
-                o.uv_lodDist.xy = v.texcoord.xy; //uv
+                o.pos.xyzw = clipPos.xyzw;
+                o.TBN0.x = worldTangent.x;
+                o.TBN0.y = worldBinormal.x;
+                o.TBN0.z = worldVNormal.x;
+                o.TBN0.w = worldVPos.x;
+                o.TBN1.x = worldTangent.y;
+                o.TBN1.y = worldBinormal.y;
+                o.TBN1.z = worldVNormal.y;
+                o.TBN1.w = worldVPos.y;
+                o.TBN2.x = worldTangent.z;
+                o.TBN2.y = worldBinormal.z;
+                o.TBN2.z = worldVNormal.z;
+                o.TBN2.w = worldVPos.z;
+                o.uv_lodDist.xy = v.texcoord.xy;
                 o.uv_lodDist.z = lodDist;
-                o.upDir.xyz = upDir.xyz; //r2.xyz
+                o.upDir.xyz = upDir.xyz;
                 o.time_state_emiss.x = time;
+                o.time_state_emiss.y = state;
+                o.time_state_emiss.z = lerp(1, power, _EmissionUsePower);
                 o.worldPos.xyz = worldVPos.xyz;
+                o.unk.xyzw = float4(0,0,0,0);
                 return o;
             }
             // Keywords: DIRECTIONAL
@@ -281,7 +333,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float veinType = inp.time_state_emiss.y;
                 float emissionPower = inp.time_state_emiss.z;
                 float3 worldPos1 = inp.worldPos.xyz;
-                float3 shadows = inp.shadows.xyz;
+                float3 indirectLight = inp.indirectLight.xyz;
               
                 // Choose color based on the veinType
                 float3 veinColor = float3(0,0,0);
@@ -480,7 +532,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 float colorIntensity = dot(finalColor.xyz, float3(0.3, 0.6, 0.1)); //r0.w
                 finalColor = colorIntensity > 1.0 ? finalColor / colorIntensity * (log(log(colorIntensity) + 1) + 1) : finalColor;
-                o.sv_target.xyz = emissionColor * _EmissionMask.xyz + (albedo.xyz * shadows.xyz + finalColor);
+                o.sv_target.xyz = emissionColor * _EmissionMask.xyz + (albedo.xyz * indirectLight.xyz + finalColor);
                 o.sv_target.w = 1;
                 return o;
             }
