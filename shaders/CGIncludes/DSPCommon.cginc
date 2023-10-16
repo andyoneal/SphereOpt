@@ -126,4 +126,5 @@ inline void animateWithVerta(uint vertexID, float time, float prepare_length, fl
 inline float3 calculateBinormal(float4 tangent, float3 normal ) {
     float sign = tangent.w * unity_WorldTransformParams.w;
     float3 binormal = cross(normal.xyz, tangent.xyz) * sign;
+    return binormal;
 }
