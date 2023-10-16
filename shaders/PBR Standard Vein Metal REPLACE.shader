@@ -57,6 +57,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
+            #include "CGIncludes/DSPCommon.cginc"
             
             struct v2f
             {
@@ -76,60 +77,24 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             {
                 float4 sv_target : SV_Target0;
             };
-            struct GPUOBJECT
-            {
-              uint objId;
-              float3 pos;
-              float4 rot;
-            };
-            
-            struct AnimData
-            {
-              float time;
-              float prepare_length;
-              float working_length;
-              uint state;
-              float power;
-            };
             
             StructuredBuffer<uint> _IdBuffer;
             StructuredBuffer<GPUOBJECT> _InstBuffer;
-            StructuredBuffer<float> _VertaBuffer;
             StructuredBuffer<AnimData> _AnimBuffer;
             StructuredBuffer<float3> _ScaleBuffer;
             
             float4 _LightColor0;
-            float4 unused0;
-            int _VertexSize;
-            uint _VertexCount;
-            uint _FrameCount;
             float _UseScale;
-            float4 unused1;
             float4 _Global_AmbientColor0;
             float4 _Global_AmbientColor1;
             float4 _Global_AmbientColor2;
-            float4 unused2;
-            float4 unused3;
-            float4 unused4;
             float3 _Global_SunsetColor0;
             float3 _Global_SunsetColor1;
             float3 _Global_SunsetColor2;
-            float4 unused5;
-            float4 unused6;
-            float4 unused7;
-            float4 unused8;
-            float4 unused9;
-            float4 unused10;
             float4 _Global_Biomo_Color0;
             float4 _Global_Biomo_Color1;
             float4 _Global_Biomo_Color2;
             float _Global_Planet_Radius;
-            float4 unused11;
-            float4 unused12;
-            float4 unused13;
-            float unused14;
-            float unused15;
-            float unused16;
             float4 _Global_PointLightPos;
             float4 _Color0;
             float4 _Color1;
@@ -170,83 +135,93 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             UNITY_DECLARE_TEX2D(_EmissionJitterTex);
             UNITY_DECLARE_TEXCUBE(_Global_LocalPlanetHeightmap);
             UNITY_DECLARE_TEXCUBE(_Global_PGI);
-
-            float3 rotate_vector_fast(float3 v, float4 r){ 
-                return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
+            
+            inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
+                float upDirMagSqr = dot(upDir, upDir);
+                bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
+                
+                float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
+                bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
+                
+                float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
+                
+                float3 worldReflect = reflect(-viewDir, worldNormal);
+                
+                float3 reflectDir;
+                reflectDir.x = dot(worldReflect.zxy, -xaxis);
+                reflectDir.y = dot(worldReflect, upDir);
+                reflectDir.z = dot(worldReflect, -zaxis);
+                
+                float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4);
+                float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir, reflectLOD);
+                
+                float scaled_metallicLow = metallicLow * 0.7 + 0.3;
+                reflectivity = scaled_metallicLow * (1.0 - perceptualRoughness);
+                
+                return g_PGI * reflectivity;
             }
             
             v2f vert(appdata_full v, uint instanceID : SV_InstanceID, uint vertexID : SV_VertexID)
             {
                 v2f o;
+                
+                
                 float objIndex = _IdBuffer[instanceID]; //r0.x
                   
-                //GPUOBJECT
+                /* _InstBuffer: an array of GPUOBJECTs, which is a struct defined in the game code.
+                        This buffer stores all of the position and rotation info for every copy of the model.
+                        That way, the game can issue a single draw call and draw every instance at once.
+                        
+                        objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
+                        pos: xyz position of this instance in the world
+                        rot: quaternion rotation */
                 float objId = _InstBuffer[objIndex].objId; //r1.x
                 float3 pos = _InstBuffer[objIndex].pos; //r1.yzw
                 float4 rot = _InstBuffer[objIndex].rot; //r2.xyzw
                 
-                //animData
+                /* _AnimBuffer: an array of AnimData, which is a struct defined in the game code.
+                        Typically used for animation data, but frequently used as a place to put extra data.
+                        For example, in metal veins, state is used to store VeinType, which is used to select
+                        the right color. Nothing to do with animation.
+                        
+                        time: 
+                        prepare_length:
+                        working_length:
+                        state:
+                        power: */
                 float time = _AnimBuffer[objId].time; //r3.x
                 float prepare_length = _AnimBuffer[objId].prepare_length; //r3.y
                 float working_length = _AnimBuffer[objId].working_length; //r3.z
                 uint state = _AnimBuffer[objId].state; //r3.w
                 float power = _AnimBuffer[objId].power; //r0.y
                 
-                float prepareFrameCount = prepare_length > 0 ? _FrameCount - 1 : _FrameCount; //r0.w
-                
-                bool useScale = _UseScale > 0.5;
-                
+                /* Resize/Scale: mostly used for randomizing size of vegetation
+                    If _UseScale is on, grab the scaling factor from _ScaleBuffer and use to scale
+                    both the vertices and the normals. For some reason, tangent isn't scaled.*/
                 float3 scale = _ScaleBuffer[objIndex]; //r4.xyz;
-                
+                bool useScale = _UseScale > 0.5;
                 float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz; //r5.xyz
                 float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz; //r4.xyz
                 float3 scaledVTan = v.tangent.xyz; //r6
-                  
-                bool skipVerta = prepareFrameCount <= 0 || (_VertexSize != 9 && _VertexSize != 6 && _VertexSize != 3) || _VertexCount <= 0 || working_length <= 0; //r0.x
-                if (!skipVerta) {
-                  float prepareTime = time >= prepare_length && prepare_length > 0 ? 1.0 : 0; //r0.x
-                  prepareTime = frac(time / (prepare_length + working_length)) * (prepareFrameCount - 1) + prepareTime;
-                  prepareTime = prepareFrameCount - 1 <= 0 ? 0 : prepareTime; //r0.x
-                  uint prepareTimeSec = (uint)prepareTime; //r0.z
-                  float prepareTimeFrac = frac(prepareTime); //r0.x
-                  int frameStride = _VertexSize * _VertexCount; //r0.w
-                  int offset = vertexID * _VertexSize; //r1.x
-                  uint frameIdx = mad(frameStride, prepareTimeSec, offset); //r3.y
-                  uint nextFrameIdx = mad(frameStride, prepareTimeSec + 1, offset); //r0.z
-                  
-                  if (_VertexSize == 3) {
-                    scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                    scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                    scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                  } else {
-                    if (_VertexSize == 6) {
-                      scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                      scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                      scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                      scaledVNormal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
-                      scaledVNormal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
-                      scaledVNormal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
-                    } else {
-                      if (_VertexSize == 9) {
-                        scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                        scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                        scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                        scaledVNormal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
-                        scaledVNormal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
-                        scaledVNormal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
-                        scaledVTan.x = lerp(_VertaBuffer[frameIdx + 6], _VertaBuffer[nextFrameIdx + 6], prepareTimeFrac);
-                        scaledVTan.y = lerp(_VertaBuffer[frameIdx + 7], _VertaBuffer[nextFrameIdx + 7], prepareTimeFrac);
-                        scaledVTan.z = lerp(_VertaBuffer[frameIdx + 8], _VertaBuffer[nextFrameIdx + 8], prepareTimeFrac);
-                      }
-                    }
-                  }
-                }
-                  
+                
+                /* DSP stores some animation data in separate Verta files, which contain vertex positions(optionally, also
+                    normals and tangents) for each frame of an animation. This will replace the current values for each, if
+                    there is a verta file for this model and this instance is currently animating. Otherwise does nothing. */
+                animateWithVerta(vertexID, time, prepare_length, working_length, /*inout*/ scaledVPos, /*inout*/ scaledVNormal, /*inout*/ scaledVTan);
+                
+                /* Use the position and rotation data for this instance to put it in the right position in the world.
+                    Each vertex, normal, and tangent needs to be rotated, but only the positions of the vertex need to be
+                    moved. This is because normal and tangents are directions, not points. */
                 float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz; //r5.xyz
                 float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot); //r7.xyz
                 float3 worldTangent = rotate_vector_fast(scaledVTan, rot); //r0.xyz
                 
+                /* posHeight: Since the position of the instance in the world is likely the surface of the planet, (0,0,0) in
+                    world space is the center of the planet, and all rocky planets are have a radius of 200, length(pos) is
+                    going to be (roughly) 200 almost every time. */
                 float posHeight = length(pos); //r1.x
+                
+                
                 float3 upDir = float3(0,1,0); //r2.xyz
                 float lodDist = 0; //r1.x
                 
@@ -265,11 +240,10 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 o.time_state_emiss.z = lerp(1, power, _EmissionUsePower);
                 
                 float4 clipPos = UnityObjectToClipPos(worldVPos);
+                
                 worldVNormal = UnityObjectToWorldNormal(worldVNormal.xyz); //r6.xyz
                 worldTangent = float4(UnityObjectToWorldDir(worldTangent.xyz), v.tangent.w); //r0.xyz as yzx
-                
-                float sign = v.tangent.w * unity_WorldTransformParams.w; //r0.w
-                float3 binormal = cross(worldVNormal.xyz, worldTangent.xyz) * sign; //r3.yzw
+                float3 worldBinormal = calculateBinormal(float4(worldTangent.xyz, v.tangent.xyz), worldVNormal);
                 
                 o.shadows.xyz = ShadeSH9(float4(worldVNormal, 1.0));
                 
@@ -277,15 +251,15 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 UNITY_TRANSFER_SHADOW(o, float(0,0))
                 
                 o.TBN0.x = worldTangent.x; //t.x
-                o.TBN0.y = binormal.x; //b.x
+                o.TBN0.y = worldBinormal.x; //b.x
                 o.TBN0.z = worldVNormal.x; //n.x
                 o.TBN0.w = worldVPos.x; //p.x
                 o.TBN1.x = worldTangent.y; //t.y
-                o.TBN1.y = binormal.y; //b.y
+                o.TBN1.y = worldBinormal.y; //b.y
                 o.TBN1.z = worldVNormal.y; //n.y
                 o.TBN1.w = worldVPos.y; //p.y
                 o.TBN2.x = worldTangent.z; //t.z
-                o.TBN2.y = binormal.z; //b.z
+                o.TBN2.y = worldBinormal.z; //b.z
                 o.TBN2.z = worldVNormal.z; //n.z
                 o.TBN2.w = worldVPos.z; //p.z
                 o.unk.xyzw = float4(0,0,0,0);
@@ -356,18 +330,13 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 albedo = colorB * pow(lerp(1.0, occTex.x, occTex.y), _OcclusionPower); //r0.xyz
                 
                 float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(uv, 0, -1)));
-                float3 normal;
-                normal.xy = unpackedNormal.xy;
-                normal.z = unpackedNormal.z;
+                float3 normal = float3(_NormalMultiplier * unpackedNormal.xy, unpackedNormal.z);
+                normal.xyz = normalize(normal.xyz);
                 
                 float4 emmTex = tex2Dbias(_EmissionTex, float4(uv,0,-1)); //r3.xyzw
                 float emmJitTex = UNITY_SAMPLE_TEX2D(_EmissionJitterTex, float2(time, 0)).x; //r0.w
                 
-                float sat_Type = saturate(veinType); //r2.w
-                
                 float canEmit = (int)(emissionPower > 0.1) | (int)(_EmissionSwitch < 0.5) ? 1.0 : 0.0; //r4.x
-                
-                normal.xy = _NormalMultiplier * normal.xy;
                 
                 //Calculate how much of the planet's theme/biomo should be included
                 float2 g_heightMap = UNITY_SAMPLE_TEXCUBE(_Global_LocalPlanetHeightmap, normalize(worldPos1.xyz)).xy; //r4.yz
@@ -383,18 +352,17 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 biomoColor.xyz = biomoColor.xyz * _BiomoMultiplier;
                 float heightOffset = saturate((_BiomoHeight - (length(worldPos1.xyz) - (g_heightMap.x + _Global_Planet_Radius))) / _BiomoHeight); //r1.y
                 heightOffset = biomoColor.w * pow(heightOffset, 2);
+
                 float3 multipliedAlbedo = albedo.xyz * _AlbedoMultiplier; //r4.yzw
-                biomoColor = lerp(biomoColor.xyz, biomoColor.xyz * multipliedAlbedo, _Biomo);
-                albedo.xyz = lerp(multipliedAlbedo, biomoColor, heightOffset);
-                
-                normal.xyz = normalize(normal.xyz);
+                biomoColor.xyz = lerp(biomoColor.xyz, biomoColor.xyz * multipliedAlbedo, _Biomo);
+                albedo.xyz = lerp(multipliedAlbedo, biomoColor.xyz, heightOffset);
                 
                 float metallic = saturate(_MetallicMultiplier * mstex.x); //r1.x
                 float smoothness = saturate(_SmoothMultiplier * mstex.z); //r1.y =  //r1.z
                 
                 float3 emissionColor = _EmissionMultiplier * emmTex.xyz; //r3.xyz
                 float2 emmSwitchJitter = float2(_EmissionSwitch, _EmissionJitter) * emmTex.ww; //r1.zw
-                float emmIsOn = lerp(1, sat_Type, emmSwitchJitter.x); //r1.z
+                float emmIsOn = lerp(1, saturate(veinType), emmSwitchJitter.x); //r1.z
                 emissionColor.xyz = emissionColor.xyz * emmIsOn; //r3.xyz
                 float jitterRatio = _EmissionSwitch * emmSwitchJitter.y; //r1.z
                 float jitter = lerp(1.0, emmJitTex, jitterRatio); //r0.w
@@ -447,34 +415,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                    -1 = surface faces down*/
                 float nDotUp = dot(worldNormal.xyz, upDir.xyz); //r4.z
                 
-                float upDirMagSqr = dot(upDir.xyz, upDir.xyz); //r5.z
-                float yNotOnYAxis = upDir.y < 0.9999; //r5.w
-                float ylengthNotZero = upDirMagSqr > 0.01; //r5.z
-                bool validUpDirY = ylengthNotZero && yNotOnYAxis; //r5.w
-                
-                float3 xaxis = cross(upDir.zxy, float3(0,0,1)); //r7.xyz
-                xaxis = normalize(xaxis); //r7.xyz
-                xaxis = validUpDirY ? xaxis : float3(0,1,0); //r7.xyz
-                float xlengthNotZero = dot(xaxis, xaxis) > 0.01; //r5.w
-                bool validUpDirXY = xlengthNotZero && ylengthNotZero; //r5.z
-                
-                float3 zaxis = cross(xaxis.yzx, upDir); //r8.xyz
-                zaxis = normalize(zaxis); //r8.xyz
-                
-                float3 worldReflect = reflect(-viewDir, worldNormal); //r6.xyz
-                
-                float3 reflectDir; //r7.xyz
-                reflectDir.x = dot(worldReflect.zxy, -xaxis.xyz);
-                reflectDir.y = dot(worldReflect.xyz, upDir.xyz);
-                zaxis.xyz = validUpDirXY ? zaxis.xyz : float3(0,0,1);
-                reflectDir.z = dot(worldReflect.xyz, -zaxis.xyz);
-                
-                float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4); //r5.z
-                float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir.xyz, reflectLOD).xyz; //r6.xyz
-                float scaled_metallicLow = metallicLow * 0.7 + 0.3; //r5.z
-                float gloss = 1.0 - perceptualRoughness; //r1.y
-                float reflectivity = scaled_metallicLow * gloss; //r1.y
-                float3 reflectColor = g_PGI * reflectivity; //r6.xyz
+                float reflectivity;
+                float3 reflectColor = reflection(perceptualRoughness, metallicLow, upDir, viewDir, worldNormal, /*out*/ reflectivity);
                 
                 float3 sunsetColor = float3(1, 1, 1); //r7.xyz
                 UNITY_BRANCH
@@ -492,29 +434,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 atten = 0.8 * lerp(atten, 1.0, scaled_upDotL.x); //r1.z
                 lightColor = atten * lightColor.xyz; //r7.xyz
                 
-                //distributionGGX
-                float sqr_nDotH = nDotH * nDotH; //r1.z
-                float2 offset_roughnessSqr = roughness * roughness + float2(-1.0, 1.0); //r5.yz
-                float pbr_step1 = rcp(sqr_nDotH * offset_roughnessSqr.x + 1.0); //r0.w
-                float D = roughnessSqr * pbr_step1 * pbr_step1 * 0.25; //r0.w;
-                //missing (1/PI) *
-                
-                //geometrySchlickGGX
-                float k_1 = offset_roughnessSqr.y * offset_roughnessSqr.y; //r1.z
-                float k = k_1 * 0.125; //r2.w
-                float lerp_bma = 1.0 - k; //r1.z
-                float ggxNV = nDotV * lerp_bma + k; //r5.x
-                float ggxNL = nDotL * lerp_bma + k; //r1.z
-                
-                //fresnelSchlick
-                float2 metallicHighLowM1 = 1.0 - float2(metallicHigh, metallicLow); //r5.yz
-                float factor = exp2(vDotH * (vDotH * -5.5547 - 6.9832)); //r2.w 
-                float F = (metallicHighLowM1.x * factor + metallicHigh); //r1.x
-                float DF = D * F;//r0.w
-                
-                //geometrySmith
-                float G = rcp(ggxNL * ggxNV); //r1.x
-                //missing (NdotL * NdotV) / r1.x
+                float specularTerm = GGX(roughness, metallicHigh, nDotH, nDotV, nDotL, vDotH);
                 
                 float3 ambientColor = lerp(_Global_AmbientColor1.xyz, _Global_AmbientColor0.xyz, scaled_upDotL.y); //r5.xyw
                 float3 ambientColor2 = lerp(_Global_AmbientColor2.xyz, _Global_AmbientColor1.xyz, saturate(upDotL * 3.0 + 1.0)); //r8.xyz
@@ -524,32 +444,24 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 scaled_ambientColor = (_AmbientInc + 1.0) * scaled_ambientColor;
                 
                 // Add mecha headlamp light. Only active during night.
-                float headlampIsOn = _Global_PointLightPos.w >= 0.5; //r1.z
-                float length_headlamp = length(_Global_PointLightPos.xyz) - 5.0; //r2.w
-                float headlampVisible = saturate(length_headlamp); //r3.w
-                float headlampDimInDaylight = saturate(dot(-upDir.xyz, _WorldSpaceLightPos0.xyz) * 5.0); //r4.x
-                float headlampLightIntensity = headlampVisible * headlampDimInDaylight; //r3.w
-                float3 rayObjToPlayer = _Global_PointLightPos.xyz - upDir.xyz * length_headlamp; //r9.xyz
-                float distObjToPlayer = length(rayObjToPlayer.xyz); //r2.w
-                float falloffHeadlampLight = pow(max((20.0 - distObjToPlayer) * 0.05, 0),2); //r4.x //inverse log falloff of headlamp light from player. max distance is 20.
-                float playerIsDirectlyOnObj = distObjToPlayer < 0.001; //r4.z
-                float3 fallbackHeadlampLight = headlampLightIntensity * float3(1.3, 1.1, 0.6); //r10.xyz
-                float3 dirObjToPlayer = rayObjToPlayer.xyz / distObjToPlayer; //r9.xyz
-                float plDotN = saturate(dot(dirObjToPlayer.xyz, worldNormal.xyz)); //angle between player and Normal
-                headlampLightIntensity = headlampLightIntensity * (falloffHeadlampLight * plDotN); //r2.x
-                float3 headlampLight = playerIsDirectlyOnObj ? fallbackHeadlampLight : headlampLightIntensity * float3(1.3, 1.1, 0.6); //r2.xyz
-                headlampLight = headlampIsOn ? headlampLight.xyz : float3(0,0,0); AND r2.xyz;
+                float3 headlampLight = calculateLightFromHeadlamp(_Global_PointLightPos, upDir, lightDir, worldNormal);
+                
                 float3 headlampLightColor = nDotL * lightColor.xyz + headlampLight.xyz; //r2.xyz
                 headlampLightColor = albedo.xyz * headlampLightColor.xyz; //r2.xyz //albedoLight
                 
-                
-                float metalReverseFalloff = pow(metallicHighLowM1.y, 0.6); //r1.z //[.9071 - 0] log falloff but reversed?
+                float metalReverseFalloff = pow(1.0 - metallicLow, 0.6); //r1.z //[.9071 - 0] log falloff but reversed?
                 float3 specularColor = _SpecularColor.xyz * lerp(float3(1.0, 1.0, 1.0), albedo.xyz, metallicLow); //r9.xyz
                 specularColor.xyz = specularColor.xyz * lightColor.xyz; //r7.xyz
-                specularColor = (DF * G + 0.0318) * specularColor.xyz;
-                float3 specColorFactor = nDotL * specularColor.xyz; //r4.xzw
-                float3 specColorMod = (metallicHighLowM1.y * 0.2) * albedo.xyz + metallicLow; //r7.xyz //[0.17, 0] * albedo * [0, 1] = [0.32, 1] * albedo
-                specularColor = specColorFactor * specColorMod; //r4.xzw //used below
+                
+                //float specularTerm = (DF * G) / (4.0 * nDotL * nDotV);
+                specularColor = nDotL * (specularTerm + 0.0318) * specularColor.xyz;
+                //specularTerm is multiplied by nDotL in unity's BDRF. maybe that's what this is.
+                //but why + 1/(10*pi)?
+                //one formula for "Diffuse BRDF" is Cdiff/pi, so maybe Cdiff is 1/10 here? Cdiff = diffuse albedo
+                
+                float3 specColorMod = (1.0 - metallicLow) * 0.2 * albedo.xyz + metallicLow; //r7.xyz //[0.17, 0] * albedo * [0, 1] = [0.32, 1] * albedo
+                //lerp(metallicLow, 1.0, 0.2 * albedo.xyz);
+                specularColor = specularColor * specColorMod; //r4.xzw
                 
                 float3 finalColor = albedo.xyz * scaled_ambientColor.xyz; //r7.xyz
                 
@@ -588,6 +500,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
+            #include "CGIncludes/DSPCommon.cginc"
             
             struct v2f
             {
@@ -600,31 +513,12 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             {
                 float4 sv_target : SV_Target0;
             };
-            struct GPUOBJECT
-            {
-              uint objId;
-              float3 pos;
-              float4 rot;
-            };
-            
-            struct AnimData
-            {
-              float time;
-              float prepare_length;
-              float working_length;
-              uint state;
-              float power;
-            };
             
             StructuredBuffer<uint> _IdBuffer;
             StructuredBuffer<GPUOBJECT> _InstBuffer;
-            StructuredBuffer<float> _VertaBuffer;
             StructuredBuffer<AnimData> _AnimBuffer;
             StructuredBuffer<float3> _ScaleBuffer;
             
-            int _VertexSize;
-            uint _VertexCount;
-            uint _FrameCount;
             float _UseScale;
             float _Global_Planet_Radius;
             float _EmissionUsePower;
@@ -632,10 +526,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             
             UNITY_DECLARE_TEX2D(_MS_Tex);
             UNITY_DECLARE_TEXCUBE(_Global_LocalPlanetHeightmap);
-            
-            float3 rotate_vector_fast(float3 v, float4 r){ 
-                return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
-            }
             
             // Keywords: SHADOWS_DEPTH
             v2f vert(appdata_full v, uint instanceID : SV_InstanceID, uint vertexID : SV_VertexID)
@@ -665,42 +555,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz; //r5.xyz
                 float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz; //r4.xyz
                 
-                bool skipVerta = prepareFrameCount <= 0 || (_VertexSize != 9 && _VertexSize != 6 && _VertexSize != 3) || _VertexCount <= 0 || working_length <= 0; //r0.x
-                if (!skipVerta) {
-                  float prepareTime = time >= prepare_length && prepare_length > 0 ? 1.0 : 0; //r0.x
-                  prepareTime = frac(time / (prepare_length + working_length)) * (prepareFrameCount - 1) + prepareTime;
-                  prepareTime = prepareFrameCount - 1 <= 0 ? 0 : prepareTime; //r0.x
-                  uint prepareTimeSec = (uint)prepareTime; //r0.z
-                  float prepareTimeFrac = frac(prepareTime); //r0.x
-                  int frameStride = _VertexSize * _VertexCount; //r0.w
-                  int offset = vertexID * _VertexSize; //r1.x
-                  uint frameIdx = mad(frameStride, prepareTimeSec, offset); //r3.y
-                  uint nextFrameIdx = mad(frameStride, prepareTimeSec + 1, offset); //r0.z
-                  
-                  if (_VertexSize == 3) {
-                    scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                    scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                    scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                  } else {
-                    if (_VertexSize == 6) {
-                      scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                      scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                      scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                      scaledVNormal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
-                      scaledVNormal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
-                      scaledVNormal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
-                    } else {
-                      if (_VertexSize == 9) {
-                        scaledVPos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
-                        scaledVPos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
-                        scaledVPos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
-                        scaledVNormal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
-                        scaledVNormal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
-                        scaledVNormal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
-                      }
-                    }
-                  }
-                }
+                float3 tan = float3(0,0,0);
+                animateWithVerta(vertexID, time, prepare_length, working_length, /*inout*/ scaledVPos, /*inout*/ scaledVNormal, /*inout*/ tan);
                 
                 float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz; //r5.xyz
                 float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot); //r7.xyz //moved to r6
