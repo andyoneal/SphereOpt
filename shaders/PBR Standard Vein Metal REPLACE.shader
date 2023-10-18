@@ -155,30 +155,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             sampler2D _EmissionTex;
             UNITY_DECLARE_TEX2D(_EmissionJitterTex);
             UNITY_DECLARE_TEXCUBE(_Global_LocalPlanetHeightmap);
-            UNITY_DECLARE_TEXCUBE(_Global_PGI);
-            
-            /* What image is reflected in metallic surfaces and how reflective is it? */
-            inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
-                float upDirMagSqr = dot(upDir, upDir);
-                bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
-                float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
-                bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
-                float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
-                
-                float3 worldReflect = reflect(-viewDir, worldNormal);
-                float3 reflectDir;
-                reflectDir.x = dot(worldReflect.zxy, -xaxis);
-                reflectDir.y = dot(worldReflect, upDir);
-                reflectDir.z = dot(worldReflect, -zaxis);
-                
-                float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4);
-                float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir, reflectLOD);
-                
-                float scaled_metallicLow = metallicLow * 0.7 + 0.3;
-                reflectivity = scaled_metallicLow * (1.0 - perceptualRoughness);
-                
-                return g_PGI * reflectivity;
-            }
             
             v2f vert(appdata_full v, uint instanceID : SV_InstanceID, uint vertexID : SV_VertexID)
             {
@@ -240,7 +216,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 /* Use the position and rotation data for this instance to put it in the right position in the world.
                     Each vertex, normal, and tangent needs to be rotated, but only the positions of the vertex need to be
                     moved. This is because normal and tangents are directions, not points. */
-                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz;
+                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos;
                 float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot);
                 float3 worldTangent = rotate_vector_fast(scaledVTan, rot);
                 
@@ -261,33 +237,33 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     
                     /* Since (0,0,0) in world space is the center of the planet, the pos vector points upward!
                         Normalize pos to make it a "direction" rather than a point in 3D space */
-                    upDir.xyz = normalize(pos);
+                    upDir = normalize(pos);
                     
                     /* g_heightMap: a texture containing the height map of the land on the planet, relative to sea level. */
-                    float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x;
+                    float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos), 0).x;
                     
                     /* If pos is slightly below ground or floating, bring it to surface level. Adjust along our upDir axis. */
                     float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight;
-                    worldVPos.xyz = adjustHeight * upDir.xyz + worldVPos.xyz;
+                    worldVPos = adjustHeight * upDir + worldVPos;
                     
                     /* calculate lodDist. Essentially 0 = close, 1 = far */
-                    lodDist = saturate(0.01 * (distance(pos.xyz, _WorldSpaceCameraPos) - 180));
+                    lodDist = saturate(0.01 * (distance(pos, _WorldSpaceCameraPos) - 180));
                 }
                 
                 /* Usually converts vertex position to world space, but we already have it world space thanks to
                     _InstBuffer.pos and .rot. Does nothing. */
-                worldVPos.xyz = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz;
+                worldVPos = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz;
                 
                 /* Slightly adjusts our normals towards the upward direction if the camera is far. Not clear to me why
                     you would want this. Maybe it looks better in the planet map view? */
-                worldVNormal.xyz = lerp(normalize(worldVNormal), upDir.xyz, 0.2 * lodDist);
+                worldVNormal = lerp(normalize(worldVNormal), upDir, 0.2 * lodDist);
                 
                 // Unity can convert our World Position to ClipPos for us. 
                 float4 clipPos = UnityObjectToClipPos(worldVPos);
                 
                 /* Again, usually would convert normals and tangents to world space, but we already have them there.
                     Does nothing. */
-                worldVNormal = UnityObjectToWorldNormal(worldVNormal.xyz);
+                worldVNormal = UnityObjectToWorldNormal(worldVNormal);
                 worldTangent = float4(UnityObjectToWorldDir(worldTangent.xyz), v.tangent.w);
                 
                 /* Use math to calulate binormals using normals and tangents. Basically, the binormal is the cross product
@@ -298,8 +274,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 o.indirectLight.xyz = ShadeSH9(float4(worldVNormal, 1.0));
                 
                 /* pass all of our values to the fragment/pixel shader */
-                UNITY_TRANSFER_SHADOW(o, float(0,0))
                 o.pos.xyzw = clipPos.xyzw;
+                UNITY_TRANSFER_SHADOW(o, float(0,0))
                 o.TBN0.x = worldTangent.x;
                 o.TBN0.y = worldBinormal.x;
                 o.TBN0.z = worldVNormal.x;
@@ -314,12 +290,13 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 o.TBN2.w = worldVPos.z;
                 o.uv_lodDist.xy = v.texcoord.xy;
                 o.uv_lodDist.z = lodDist;
-                o.upDir.xyz = upDir.xyz;
+                o.upDir.xyz = upDir;
                 o.time_state_emiss.x = time;
                 o.time_state_emiss.y = state;
                 o.time_state_emiss.z = lerp(1, power, _EmissionUsePower);
-                o.worldPos.xyz = worldVPos.xyz;
+                o.worldPos.xyz = worldVPos;
                 o.unk.xyzw = float4(0,0,0,0);
+                
                 return o;
             }
             
@@ -346,31 +323,31 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     box that can differ for each GPU brand/generation. */
                 float3 veinColor = float3(0,0,0);
                 if (veinType < 1.05 && 0.95 < veinType) { //iron
-                  veinColor.xyz = _Color1.xyz;
+                  veinColor = _Color1.xyz;
                 } else {
                   if (veinType < 2.05 && 1.95 < veinType) { //copper
-                    veinColor.xyz = _Color2.xyz;
+                    veinColor = _Color2.xyz;
                   } else {
                     if (veinType < 3.05 && 2.95 < veinType) { //Silicon
-                      veinColor.xyz = _Color3.xyz;
+                      veinColor = _Color3.xyz;
                     } else {
                       if (veinType < 4.05 && 3.95 < veinType) { //titanium
-                        veinColor.xyz = _Color4.xyz;
+                        veinColor = _Color4.xyz;
                       } else {
                         if (veinType < 5.05 && 4.95 < veinType) { //stone
-                          veinColor.xyz = _Color5.xyz;
+                          veinColor = _Color5.xyz;
                         } else {
                           if (veinType < 6.05 && 5.95 < veinType) { //coal
-                            veinColor.xyz = _Color6.xyz;
+                            veinColor = _Color6.xyz;
                           } else {
                             if (veinType < 9.05 && 8.95 < veinType) { //diamond
-                              veinColor.xyz = _Color9.xyz;
+                              veinColor = _Color9.xyz;
                             } else {
-                              veinColor.xyz = veinType < 14.05 && 13.95 < veinType ? _Color14.xyz : _Color0.xyz; //mag, then none
-                              veinColor.xyz = veinType < 13.05 && 12.95 < veinType ? _Color13.xyz : veinColor.xyz; //bamboo
-                              veinColor.xyz = veinType < 12.05 && 11.95 < veinType ? _Color12.xyz : veinColor.xyz; //grat
-                              veinColor.xyz = veinType < 11.05 && 10.95 < veinType ? _Color11.xyz : veinColor.xyz; //crysrub
-                              veinColor.xyz = veinType < 10.05 && 9.95 < veinType ? _Color10.xyz : veinColor.xyz; //frac
+                              veinColor = veinType < 14.05 && 13.95 < veinType ? _Color14.xyz : _Color0.xyz; //mag, then none
+                              veinColor = veinType < 13.05 && 12.95 < veinType ? _Color13.xyz : veinColor; //bamboo
+                              veinColor = veinType < 12.05 && 11.95 < veinType ? _Color12.xyz : veinColor; //grat
+                              veinColor = veinType < 11.05 && 10.95 < veinType ? _Color11.xyz : veinColor; //crysrub
+                              veinColor = veinType < 10.05 && 9.95 < veinType ? _Color10.xyz : veinColor; //frac
                             }
                           }
                         }
@@ -392,27 +369,27 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 /* _MainTexA, MainTexB: the typical sort of textures that provide the color. In this case, _MainTexA is the
                     crystal and _MainTexB is the dirt/rock texture near the bottom. Split so that amount of dirt shown can be
-                    altered. */
-                float3 colorA = veinColor.xyz * tex2D(_MainTexA, uv).xyz;
+                    altered and only the crystal portion is tinted by veinColor. */
+                float3 colorA = tex2D(_MainTexA, uv).xyz * veinColor;
                 float4 colorB = tex2D(_MainTexB, uv);
                 
                 /* _OcclusionTex: Ambient Occlusion texture. I don't understand this well enough to describe it. */
                 float2 occTex = tex2D(_OcclusionTex, uv).xw;
                 
                 /* get the combined color (albedo) from the textures */
-                float3 albedo = lerp(colorA.xyz * float3(6.0, 6.0, 6.0), colorB.xyz * float3(1.7, 1.7, 1.7), (1.0 - lodDist) * colorB.w);
+                float3 albedo = lerp(colorA * float3(6.0, 6.0, 6.0), colorB.xyz * float3(1.7, 1.7, 1.7), (1.0 - lodDist) * colorB.w);
                 
                 /* applying ambient occlusion to the combined color (albedo). Again, I don't understand how this works. */
                 albedo = albedo * pow(lerp(1.0, occTex.x, occTex.y), _OcclusionPower);
                 
                 /* Multiply/exaggerate/boost the albedo with the _AlbedoMultiplier property */
-                albedo = albedo.xyz * _AlbedoMultiplier;
+                albedo = albedo * _AlbedoMultiplier;
                 
                 /* _NormalTex: basically a "bump map". Uses lighting tricks to make an object seem more 3D by affecting lighting.
                     UnpackNormal() is a built-in function provided by Unity. _NormalMultiplier exaggerates the bump map. */
                 float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(uv, 0, -1)));
                 float3 normal = float3(_NormalMultiplier * unpackedNormal.xy, unpackedNormal.z);
-                normal.xyz = normalize(normal.xyz);
+                normal = normalize(normal);
                 
                 /* _EmissionTex: defines which part of the object should glow or emit "light". */
                 float4 emmTex = tex2Dbias(_EmissionTex, float4(uv,0,-1));
@@ -426,7 +403,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 /* Calculate how much of the planet's theme/biomo colors should be included, based on how near to the
                     ground the object is.
                     ...I think. I don't understand this part very well, but it's definitely used to add to color/albedo.*/
-                float2 g_heightMap = UNITY_SAMPLE_TEXCUBE(_Global_LocalPlanetHeightmap, normalize(worldPos1.xyz)).xy;
+                float2 g_heightMap = UNITY_SAMPLE_TEXCUBE(_Global_LocalPlanetHeightmap, normalize(worldPos1)).xy;
                 float frac_heightMap = frac(g_heightMap.y);
                 float int_heightMap = g_heightMap.y - frac_heightMap;
                 float biomoThreshold = (frac_heightMap * frac_heightMap) * (frac_heightMap * -2.0 + 3.0) + int_heightMap;
@@ -438,11 +415,11 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 biomoColor = _Global_Biomo_Color2 * biomoThreshold2 + biomoColor;
                 biomoColor.xyz = biomoColor.xyz * _BiomoMultiplier;
                 
-                float heightOffset = saturate((_BiomoHeight - (length(worldPos1.xyz) - (g_heightMap.x + _Global_Planet_Radius))) / _BiomoHeight);
+                float heightOffset = saturate((_BiomoHeight - length(worldPos1) - g_heightMap.x + _Global_Planet_Radius) / _BiomoHeight);
                 heightOffset = biomoColor.w * pow(heightOffset, 2);
                 
                 biomoColor.xyz = lerp(biomoColor.xyz, biomoColor.xyz * albedo, _Biomo);
-                albedo.xyz = lerp(albedo, biomoColor.xyz, heightOffset);
+                albedo = lerp(albedo, biomoColor.xyz, heightOffset);
                 
                 /* Multiply/exaggerate/boost the metallic and smoothness values from _MS_Tex with the _MetallicMultiplier
                     _MetallicMultiplier and _SmoothMultiplier properties. */
@@ -451,13 +428,14 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 /* calculate emission/glow from the textures and the various properties that control emission. */
                 float3 emissionColor = _EmissionMultiplier * emmTex.xyz;
-                float2 emmSwitchJitter = float2(_EmissionSwitch, _EmissionJitter) * emmTex.ww;
-                float emmIsOn = lerp(1, saturate(veinType), emmSwitchJitter.x);
-                emissionColor.xyz = emissionColor.xyz * emmIsOn;
-                float jitterRatio = _EmissionSwitch * emmSwitchJitter.y;
+                float emissionSwitch = _EmissionSwitch * emmTex.w;
+                float emissionJitter = _EmissionJitter * emmTex.w;
+                float emmIsOn = lerp(1, saturate(veinType), emissionSwitch);
+                emissionColor = emissionColor * emmIsOn;
+                float jitterRatio = _EmissionSwitch * emissionJitter;
                 float jitter = lerp(1.0, emmJitTex, jitterRatio);
-                emissionColor.xyz = emissionColor.xyz * jitter;
-                emissionColor.xyz = emissionColor.xyz * canEmit;
+                emissionColor = emissionColor * jitter;
+                emissionColor = emissionColor * canEmit;
                 
                 /* reconstruct worldPos from where they were packed into the TBN vectors sent by the vertex shader. */
                 float3 worldPos = float3(inp.TBN0.w, inp.TBN1.w, inp.TBN2.w);
@@ -467,7 +445,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 UNITY_LIGHT_ATTENUATION(atten, inp, worldPos);
                 
                 /* viewDir: the direction from the object to the camera. Used to calculate things like reflected light */
-                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos.xyz);
+                float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
                 
                 /* Using Tangent, Binormal, and Normal from the shader, transform the values from the "bump map" _NormalTex
                     to where the normals are in the world.  */
@@ -475,7 +453,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 worldNormal.x = dot(inp.TBN0.xyz, normal.xyz);
                 worldNormal.y = dot(inp.TBN1.xyz, normal.xyz);
                 worldNormal.z = dot(inp.TBN2.xyz, normal.xyz);
-                worldNormal = normalize(worldNormal.xyz);
+                worldNormal = normalize(worldNormal);
                 
                 /* for reasons I don't understand, scale the metallic values to two different scales */
                 float metallicLow = metallic * 0.85 + 0.149; //scale metallic from 0.15 to 1.0
@@ -491,10 +469,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     that as the "half" direction is useful for calculating light. */
                 float3 halfDir = normalize(viewDir + lightDir);
                 
-                /* roughness and roughnessSqr: smart math people have decided that roughness^2 and roughness^4 are useful
-                    for calculating light. */
+                /* roughness: smart math people have decided that roughness^2 is useful for calculating light. */
                 float roughness = perceptualRoughness * perceptualRoughness;
-                float roughnessSqr = roughness * roughness;
                 
                 /* the dot product of a normalized vector and another normalized vector (aka directions) gives us the
                     cosine of the angle between them. That's easy to work with since that means if the two directions
@@ -514,25 +490,25 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 /* nDotH: Normal dot HalfDir. The angle between the normal and the direction towards the mysterious "half"
                     direction. */
-                float unclamped_nDotH = dot(worldNormal.xyz, halfDir);
+                float unclamped_nDotH = dot(worldNormal, halfDir);
                 float nDotH = max(0, unclamped_nDotH);
                 
                 /* vDotH: ViewDir dot HalfDir. The angle between the direction towards the camera and the direction
                     towards the mysterious "half" direction */
-                float unclamped_vDotH = dot(viewDir.xyz, halfDir);
+                float unclamped_vDotH = dot(viewDir, halfDir);
                 float vDotH = max(0, unclamped_vDotH);
                 
                 /* upDotL: angle from the object to source of light (the star).
                     1 = star is directly above
                     0 = star is directly perpendicular.
                    -1 = star is on opposite side of the planet */
-                float upDotL = dot(upDir.xyz, lightDir.xyz);
+                float upDotL = dot(upDir, lightDir);
                 
                 /* nDotL: angle from the normal to the upward direction from the object.
                     1 = surface faces directly up
                     0 = surface faces the side
                    -1 = surface faces down*/
-                float nDotUp = dot(worldNormal.xyz, upDir.xyz);
+                float nDotUp = dot(worldNormal, upDir);
                 
                 /* reflectivity: how reflective is the surface, based on how rough and metallic it is?
                    reflectColor: what should be shown in the reflection? Raytracing is expensive, so fake it with an image
@@ -541,50 +517,65 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float3 reflectColor = reflection(perceptualRoughness, metallicLow, upDir, viewDir, worldNormal, /*out*/ reflectivity);
                 
                 /* sunsetColor: how should the color of light be changed for the oranges and reds produced during a sunset?
-                    Based on the position of the sun in the sky, relative to the object.*/
+                    Based on the position of the star in the sky, relative to the object.
+                    
+                    if midnight = -100% and noon = 100%:
+                        -100% to -30% = Black
+                         -30% to -10% = blend from Black to sunsetColor2
+                         -10% to  10% = blend from sunsetColor2 to sunsetColor1
+                          10% to  20% = blend from sunsetColor1 to sunsetColor0
+                          20% to  40% = blend from sunsetColor0 to White
+                          40% to 100% = White */
                 float3 sunsetColor = float3(1, 1, 1);
-                UNITY_BRANCH
+                // an odd sanity check to make sure upDotL is 1 or less, but it should always be?
                 if (upDotL <= 1) {
-                  float4 sunAngleThreshold = saturate(float4(5, 10, 5, 5) * (float4(-0.2, -0.1, 0.1, 0.3) + upDotL));
-                  float3 sunsetColor1 = _Global_SunsetColor1 * float3(1.25, 1.25, 1.25);
-                  float3 sunsetColor2 =_Global_SunsetColor2 * float3(1.5, 1.5, 1.5);
-                  sunsetColor = upDotL > -0.1 ? lerp(sunsetColor2, sunsetColor1, sunAngleThreshold.z) : sunsetColor2 * sunAngleThreshold.w;
-                  sunsetColor = upDotL > 0.1 ? lerp(sunsetColor1, _Global_SunsetColor0, sunAngleThreshold.y) : sunsetColor;
-                  sunsetColor = upDotL > 0.2 ? lerp(_Global_SunsetColor0, float3(1, 1, 1), sunAngleThreshold.x) : sunsetColor;
+                    float3 sunsetColor0 = _Global_SunsetColor0.xyz;
+                    float3 sunsetColor1 = _Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25);
+                    float3 sunsetColor2 = _Global_SunsetColor2.xyz * float3(1.5, 1.5, 1.5);
+                    
+                    float3 sunsetBlendDawn    = lerp(float3(0,0,0), sunsetColor2,  saturate(5  * (upDotL + 0.3))); // -30% to -10%
+                    float3 sunsetBlendSunrise = lerp(sunsetColor2,  sunsetColor1,  saturate(5  * (upDotL + 0.1))); // -10% to  10%
+                    float3 sunsetBlendMorning = lerp(sunsetColor1,  sunsetColor0,  saturate(10 * (upDotL - 0.1))); //  10% to  20%
+                    float3 sunsetBlendDay     = lerp(sunsetColor0,  float3(1,1,1), saturate(5  * (upDotL - 0.2))); //  20% to  40%
+                    
+                    sunsetColor = upDotL > -0.1 ? sunsetBlendSunrise : sunsetBlendDawn;
+                    sunsetColor = upDotL >  0.1 ? sunsetBlendMorning : sunsetColor;
+                    sunsetColor = upDotL >  0.2 ? sunsetBlendDay     : sunsetColor;
                 }
+                
                 /* _LightColor0: a property set by the game code for the color of the light coming from the star. Apply the
                     sunset colors calculated above to the star light to get a light color. */
-                float3 lightColor = sunsetColor.xyz * _LightColor0.xyz;
+                float3 lightColor = sunsetColor * _LightColor0.xyz;
                 
                 /* decrease shadows a bit, depending on where the sun is in the sky. Directly overhead means a weaker shadow,
                     sunrise/sunset means full strength shadows.
                     After that, use 80% of the shadow remaining so nothing is pure black. */
-                atten = 0.8 * lerp(atten, 1.0, saturate(upDotL * 0.15));
-                lightColor = atten * lightColor.xyz;
+                atten = 0.8 * lerp(atten, 1, saturate(0.15 * upDotL));
+                lightColor = atten * lightColor;
                 
                 /* specularTerm: Getting into complicated lighting calculations. This calculates strength of "specular" light
                     (aka shine/highlights). */
                 float specularTerm = GGX(roughness, metallicHigh, nDotH, nDotV, nDotL, vDotH);
                 
                 /* ambientColor: the color of the ambient light on the planet, based on the position of the star.
-                    Star is directly overhead to 33% above perpendicular (aka day) -> _Global_AmbientColor0
-                    Star is 33% above perpendicular to perpendicular -> blend from _Global_AmbientColor0 to _Global_AmbientColor1
-                    Star is perpendicular to 33% below perpendicular -> blend from _Global_AmbientColor1 to _Global_AmbientColor2
-                    Star is below 33% perpendicular (aka night) -> _Global_AmbientColor2
-                    */
-                float3 ambientColor = lerp(_Global_AmbientColor1, _Global_AmbientColor0, saturate(upDotL * 3.0));
-                float3 ambientColor2 = lerp(_Global_AmbientColor2, _Global_AmbientColor1, saturate(upDotL * 3.0 + 1.0));
-                ambientColor = upDotL > 0 ? ambientColor : ambientColor2;
+                
+                    if midnight = -100% and noon = 100%:
+                    -100% to -33% = _Global_AmbientColor2
+                     -33% to   0% = blend from _Global_AmbientColor2 to _Global_AmbientColor1
+                       0% to  33% = blend from _Global_AmbientColor1 to _Global_AmbientColor0
+                      33% to 100% = _Global_AmbientColor0 */
+                float3 ambientTwilight = lerp(_Global_AmbientColor2.xyz, _Global_AmbientColor1.xyz, saturate(upDotL * 3.0 + 1)); //-33% to 0%
+                float3 ambientLowSun = lerp(_Global_AmbientColor1.xyz, _Global_AmbientColor0.xyz, saturate(upDotL * 3.0)); // 0% - 33%
+                float3 ambientColor = upDotL > 0 ? ambientLowSun : ambientTwilight;
                 
                 /* scale the ambientColor based on the direction of the surface of the object. Unchanged for surfaces facing up
                     and hit by light from the side, stronger when hit by light directly, and weaker for surfaces facing down or
                     for light coming from behind.
                     Further increase the ambientColor with the _AmbientInc property.
                 */
-                float scaled_nDotUp = saturate(nDotUp * 0.3 + 0.7); //surface facing up = 1.0, side = 0.7, bottom = 0.4
-                float cubed_nDotL = pow(unclamped_nDotL * 0.35 + 1, 3); //light pointing directly at surface = 2.46, side = 1, directly behind surface = 0.275
-                float3 scaled_ambientColor = cubed_nDotL * (scaled_nDotUp * ambientColor);
-                scaled_ambientColor = (_AmbientInc + 1.0) * scaled_ambientColor;
+                float3 ambientLightColor = ambientColor * saturate(nDotUp * 0.3 + 0.7);
+                ambientLightColor = ambientLightColor * pow(unclamped_nDotL * 0.35 + 1, 3);
+                ambientLightColor = ambientLightColor * (_AmbientInc + 1);
                 
                 // Calculate mecha headlamp light. Only active during night.
                 float3 headlampLight = calculateLightFromHeadlamp(_Global_PointLightPos, upDir, lightDir, worldNormal);
@@ -595,26 +586,30 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 /* specularColor: color of the shine/highlights, depending on how metallic the material is and the color of the
                     light. Then, apply the calculated specular strength. */
-                float3 specularColor = _SpecularColor.xyz * lerp(float3(1.0, 1.0, 1.0), albedo.xyz, metallicLow);
-                specularColor = specularColor.xyz * lightColor.xyz;
-                specularColor = nDotL * (specularTerm + 0.0318) * specularColor.xyz;
+                float3 specularColor = _SpecularColor.xyz * lerp(float3(1.0, 1.0, 1.0), albedo, metallicLow);
+                specularColor = specularColor * lightColor;
+                float INV_TEN_PI = 0.0318309888;
+                specularColor = specularColor * nDotL * (specularTerm + INV_TEN_PI);
                 
                 /* Not sure what this is doing */
-                float3 specColorMod = (1.0 - metallicLow) * 0.2 * albedo.xyz + metallicLow;
+                float3 specColorMod = (1.0 - metallicLow) * 0.2 * albedo + metallicLow;
                 specularColor = specularColor * specColorMod;
                 
                 /* tint color to the ambient color */
-                scaled_ambientColor = albedo.xyz * scaled_ambientColor;
+                ambientLightColor = albedo * ambientLightColor;
                 
-                /* tint the reflection to be the ambient color */
+                /* tint the reflection to be a slightly greyscale version of ambient color */
                 float ambientLuminance = 0.003 + dot(ambientColor.xyx, float3(0.3, 0.6, 0.1));
                 float maxAmbient = 0.003 + max(_Global_AmbientColor0.z, max(_Global_AmbientColor0.x, _Global_AmbientColor0.y));
-                reflectColor = reflectColor * float3(1.7, 1.7, 1.7) * lerp(ambientLuminance, ambientColor, float3(0.4, 0.4, 0.4)) / maxAmbient;
+                float3 greyedAmbient = lerp(ambientLuminance, ambientColor, float3(0.4, 0.4, 0.4)) / maxAmbient;
+                reflectColor = reflectColor * float3(1.7, 1.7, 1.7) * greyedAmbient;
+                
+                /* full strength reflections during the day fading down to 30% at night. Fade happens from 25% to -25% */
                 float reflectStrength = saturate(upDotL * 2.0 + 0.5) * 0.7 + 0.3;
-                reflectColor = reflectColor.xyz * reflectStrength;
+                reflectColor = reflectColor * reflectStrength;
                 
                 /* collect all the calculated color values into our final color for output. */
-                float3 finalColor = scaled_ambientColor * (1.0 - metallicLow * 0.6)
+                float3 finalColor = ambientLightColor * (1.0 - metallicLow * 0.6)
                     + headlampLightColor * pow(1.0 - metallicLow, 0.6)
                     + specularColor;
                     
@@ -622,12 +617,12 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 finalColor = lerp(finalColor, reflectColor * albedo, reflectivity);
                 
                 // if the color value is too high (in the HDR range), normalize it.
-                float colorIntensity = dot(finalColor.xyz, float3(0.3, 0.6, 0.1));
-                finalColor = colorIntensity > 1.0 ? finalColor / colorIntensity * (log(log(colorIntensity) + 1) + 1) : finalColor;
+                float colorIntensity = dot(finalColor, float3(0.3, 0.6, 0.1));
+                finalColor = colorIntensity > 1.0 ? (finalColor / colorIntensity) * (log(log(colorIntensity) + 1) + 1) : finalColor;
                 
                 // add in any emission/glow and indirect lighting
                 finalColor = emissionColor * _EmissionMask
-                    + albedo.xyz * indirectLight
+                    + albedo * indirectLight
                     + finalColor;
                     
                 // output to the screen     
@@ -678,74 +673,71 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             UNITY_DECLARE_TEX2D(_MS_Tex);
             UNITY_DECLARE_TEXCUBE(_Global_LocalPlanetHeightmap);
             
-            // Keywords: SHADOWS_DEPTH
             v2f vert(appdata_full v, uint instanceID : SV_InstanceID, uint vertexID : SV_VertexID)
             {
                 v2f o;
                 
-                float objIndex = _IdBuffer[instanceID]; //r0.x
+                float objIndex = _IdBuffer[instanceID];
                   
-                //GPUOBJECT
-                float objId = _InstBuffer[objIndex].objId; //r1.x
-                float3 pos = _InstBuffer[objIndex].pos; //r1.yzw
-                float4 rot = _InstBuffer[objIndex].rot; //r2.xyzw
+                float objId = _InstBuffer[objIndex].objId;
+                float3 pos = _InstBuffer[objIndex].pos;
+                float4 rot = _InstBuffer[objIndex].rot;
                 
-                //animData
-                float time = _AnimBuffer[objId].time; //r3.x
-                float prepare_length = _AnimBuffer[objId].prepare_length; //r3.y
-                float working_length = _AnimBuffer[objId].working_length; //r3.z
-                uint state = _AnimBuffer[objId].state; //r3.w
-                float power = _AnimBuffer[objId].power; //r0.y
+                float time = _AnimBuffer[objId].time;
+                float prepare_length = _AnimBuffer[objId].prepare_length;
+                float working_length = _AnimBuffer[objId].working_length;
+                uint state = _AnimBuffer[objId].state;
+                float power = _AnimBuffer[objId].power;
                 
-                float prepareFrameCount = prepare_length > 0 ? _FrameCount - 1 : _FrameCount; //r0.w
+                float prepareFrameCount = prepare_length > 0 ? _FrameCount - 1 : _FrameCount;
                 
                 bool useScale = _UseScale > 0.5;
                 
-                float3 scale = _ScaleBuffer[objIndex]; //r4.xyz;
+                float3 scale = _ScaleBuffer[objIndex];
                 
-                float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz; //r5.xyz
-                float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz; //r4.xyz
+                float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz;
+                float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz;
                 
                 float3 tan = float3(0,0,0);
                 animateWithVerta(vertexID, time, prepare_length, working_length, /*inout*/ scaledVPos, /*inout*/ scaledVNormal, /*inout*/ tan);
                 
-                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos.xyz; //r5.xyz
-                float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot); //r7.xyz //moved to r6
+                float3 worldVPos = rotate_vector_fast(scaledVPos, rot) + pos;
+                float3 worldVNormal = rotate_vector_fast(scaledVNormal, rot);
                 
-                float posHeight = length(pos); //r1.x
-                float3 upDir = float3(0,1,0); //r2.xyz
-                float lodDist = 0; //r1.x
+                float posHeight = length(pos);
+                float3 upDir = float3(0,1,0);
+                float lodDist = 0;
                 if (posHeight > 0.1) {
-                  upDir.xyz = pos / posHeight; //r2.xyz
-                  float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos.xyz), 0).x;
-                  float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight; //r1.x
-                  worldVPos.xyz = adjustHeight * upDir.xyz + worldVPos.xyz; //r5
-                  lodDist = saturate(0.01 * (distance(pos.xyz, _WorldSpaceCameraPos) - 180)); //r1.x
+                  upDir = normalize(pos);
+                  float g_heightMap = UNITY_SAMPLE_TEXCUBE_LOD(_Global_LocalPlanetHeightmap, normalize(worldVPos), 0).x;
+                  float adjustHeight = (_Global_Planet_Radius + g_heightMap) - posHeight;
+                  worldVPos = adjustHeight * upDir + worldVPos;
+                  lodDist = saturate(0.01 * (distance(pos, _WorldSpaceCameraPos) - 180));
                 }
                 
-                worldVPos.xyz = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz; //r4.xyz
-                worldVNormal.xyz = lerp(normalize(worldVNormal), upDir.xyz, 0.2 * lodDist); //r6.xyz //moved to r0.xzw
+                worldVPos = mul(unity_ObjectToWorld, float4(worldVPos,1)).xyz;
+                worldVNormal = lerp(normalize(worldVNormal), upDir, 0.2 * lodDist);
                 
                 o.time_state_emiss.y = state;
                 o.time_state_emiss.z = lerp(1, power, _EmissionUsePower);
                 
-                float4 clipPos = UnityClipSpaceShadowCasterPos(float4(worldVPos.xyz, 1.0), worldVNormal.xyz);
-                o.pos = UnityApplyLinearShadowBias(clipPos);
+                float4 clipPos = UnityClipSpaceShadowCasterPos(float4(worldVPos.xyz, 1.0), worldVNormal);
+                o.pos.xyzw = UnityApplyLinearShadowBias(clipPos);
                 
-                o.uv_lodDist.xy = v.texcoord.xy; //uv
+                o.uv_lodDist.xy = v.texcoord.xy;
                 o.uv_lodDist.z = lodDist;
                 
-                o.upDir.xyz = upDir.xyz;
+                o.upDir = upDir;
                 o.time_state_emiss.x = time;
                 return o;
             }
-            // Keywords: SHADOWS_DEPTH
+            
             fout frag(v2f inp)
             {
                 fout o;
                 float2 uv = inp.uv_lodDist.xy;
-                float3 mstex = UNITY_SAMPLE_TEX2D(_MS_Tex, uv).xyw; //r1.xyz
-                if (mstex.y < _AlphaClip - 0.001) discard; //r1.y
+                float3 mstex = UNITY_SAMPLE_TEX2D(_MS_Tex, uv).xyw;
+                if (mstex.y < _AlphaClip - 0.001) discard;
                 o.sv_target.xyzw = float4(0,0,0,0);
                 return o;
             }

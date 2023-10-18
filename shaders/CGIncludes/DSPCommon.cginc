@@ -128,3 +128,28 @@ inline float3 calculateBinormal(float4 tangent, float3 normal ) {
     float3 binormal = cross(normal.xyz, tangent.xyz) * sign;
     return binormal;
 }
+
+UNITY_DECLARE_TEXCUBE(_Global_PGI);
+
+/* What image is reflected in metallic surfaces and how reflective is it? */
+inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
+    float upDirMagSqr = dot(upDir, upDir);
+    bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
+    float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
+    bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
+    float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
+    
+    float3 worldReflect = reflect(-viewDir, worldNormal);
+    float3 reflectDir;
+    reflectDir.x = dot(worldReflect.zxy, -xaxis);
+    reflectDir.y = dot(worldReflect, upDir);
+    reflectDir.z = dot(worldReflect, -zaxis);
+    
+    float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4);
+    float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir, reflectLOD);
+    
+    float scaled_metallicLow = metallicLow * 0.7 + 0.3;
+    reflectivity = scaled_metallicLow * (1.0 - perceptualRoughness);
+    
+    return g_PGI * reflectivity;
+}
