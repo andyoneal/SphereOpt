@@ -1,4 +1,4 @@
-Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
+Shader "VF Shaders/Forward/PBR Standard Vein Crystal REPLACE" {
     Properties {
         _Color0 ("Color 颜色 ID=0", Vector) = (1,1,1,1)
         _Color1 ("Color 颜色 ID=1", Vector) = (1,1,1,1)
@@ -51,7 +51,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
             Name "FORWARD"
             LOD 200
             Tags { "DisableBatching" = "true" "LIGHTMODE" = "FORWARDBASE" "RenderType" = "Opaque" "SHADOWSUPPORT" = "true" }
-            Cull 
+            Cull [_CullMode]
             GpuProgramID 63316
             CGPROGRAM
             #pragma vertex vert
@@ -74,7 +74,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                 float4 upDir_lodDist : TEXCOORD4;
                 float3 time_state_emiss : TEXCOORD5;
                 float3 worldPos : TEXCOORD6;
-                float4 screenPosIsh : TEXCOORD7;
+                float4 grabScreenPos : TEXCOORD7;
                 float3 indirectLight : TEXCOORD8;
                 UNITY_SHADOW_COORDS(10)
                 float4 unk : TEXCOORD11;
@@ -140,7 +140,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
             sampler2D _ScreenTex;
             samplerCUBE _Global_PGI;
             
-            // Keywords: DIRECTIONAL
             v2f vert(appdata_full v)
             {
                 v2f o
@@ -187,15 +186,17 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                 
                 float4 clipPos = mul(UNITY_MATRIX_VP, float4(worldVPos,1)); //r6.xyzw
                 
+                float4 grabScreenPos = ComputeGrabScreenPos(clipPos);
+                
                 float viewDir = normalize(_WorldSpaceCameraPos.xyz - worldVPos.xyz); //r3.yzw
-                float controlU = dot(worldTangent, viewDir);
+                
                 // r5.xyz = r4.xyz * r1.yzx;
                 // r5.xyz = r4.zxy * r1.zxy - r5.xyz;
                 // r1.w = dot(r5.xyz, r5.xyz);
                 // r1.w = rsqrt(r1.w);
                 // r5.xyz = r5.xyz * r1.www;
                 float3 worldBitangent = normalize(cross(worldVNormal, worldTangent)); //r5.xyz
-                float controlV = dot(worldBitangent, viewDir);
+                float2 controlUV = float2(dot(worldTangent, viewDir), dot(worldBitangent, viewDir));
                 
                 //worldVNormal = UnityObjectToWorldNormal(worldVNormal);
                 worldVNormal = normalize(worldVNormal); //r1.xyz
@@ -225,8 +226,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                 o.TBN2.w = worldVPos.z; //tex2
                 
                 o.uv_controlUV.xy = v.texcoord.xy;
-                o.uv_controlUV.z = controlU;
-                o.uv_controlUV.w = controlV;
+                o.uv_controlUV.zw = controlUV.xy;
                 
                 o.upDir_lodDist.xyz = upDir.xyz; //o5 //tex4
                 o.upDir_lodDist.w = lodDist; //o5
@@ -235,12 +235,9 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                 o.time_state_emiss.y = state; //o6.y
                 o.time_state_emiss.z = lerp(1, power, _EmissionUsePower); //o6.z
                 o.worldPos1.xyz = worldVPos; //o7 //tex6
-                o.screenPosIsh.x = clipPos.x * 0.5 + clipPos.w * 0.5; // ??
-                o.screenPosIsh.y = clipPos.y * -0.5 + clipPos.w * 0.5; // ??
-                o.screenPosIsh.zw = clipPos.zw; //tex7
+                o.grabScreenPos.xyzw = grabScreenPos;
                 o.indirectLight.xyz = ShadeSH9(float4(worldVNormal, 1.0));
                 UNITY_TRANSFER_SHADOW(o, float(0,0));
-                //o10.xyzw = ComputeScreenPos(o.pos);
                 o11.xyzw = float4(0,0,0,0);
                 
                 return o;
@@ -258,7 +255,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                   float veinType = inp.time_state_emiss.y;
                   float emissionPower = inp.time_state_emiss.z;
                   float3 worldPos1 = inp.worldPos.xyz;
-                  float3 worldPos1 = inp.screenPosIsh.xyz;
+                  float3 worldPos1 = inp.grabScreenPos.xyz;
                   float3 indirectLight = inp.indirectLight.xyz;
                   
                   
@@ -371,6 +368,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                   
                   float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(uv, 0, -1))); //r3.xyz
                   float3 normal = float3(_NormalMultiplier * unpackedNormal.xy, unpackedNormal.z); //r3.xyz
+                  normal = normalize(normal); //r3.xyz
                   
                   float4 emmTex = tex2Dbias(_EmissionTex, float4(uv,0,-1)); //r4.xyzw
                   
@@ -392,28 +390,23 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                   
                   float heightOffset = saturate((_BiomoHeight - length(worldPos1) - g_heightMap.x + _Global_Planet_Radius) / _BiomoHeight); //r1.y
                   heightOffset = biomoColor.w * pow(heightOffset, 2); //r1.w
+                  biomoColor.xyz = lerp(biomoColor.xyz, biomoColor.xyz * albedo, _Biomo);
                   
-                  multiAlbedo = _AlbedoMultiplier * albedo; //r6.xyz
-                  
-                  biomoColor.xyz = lerp(biomoColor.xyz, biomoColor.xyz * albedo, _Biomo); //r5.xyz //r6.w
+                  albedo = _AlbedoMultiplier * albedo; //r6.xyz
+                  albedo = lerp(albedo, biomoColor.xyz, heightOffset); //r2.xyz
                   
                   float screenAspect = _ScreenTex_TexelSize.z / _ScreenTex_TexelSize.w; //r5.w
-                  float2 controlRefraction = _CrystalRefrac * float2(controlUV.x, controlUV.y * screenAspect); //r7.yz
-                  float2 uvRefraction = (screenPosIsh.xy - controlRefraction.xy) / screenPosIsh.ww;
-                  float3 screenTex = tex2D(_ScreenTex, uvRefraction).xyz; //r7.xyz
+                  float2 refractOffset = _CrystalRefrac * float2(controlUV.x, controlUV.y * screenAspect); //r7.yz
+                  float2 uvRefraction = (grabScreenPos.xy - refractOffset.xy) / grabScreenPos.ww;
                   
-                  albedo = lerp(multiAlbedo, biomoColor.xyz, heightOffset); //r2.xyz
+                  float3 refractColor = tex2D(_ScreenTex, uvRefraction).xyz; //r7.xyz
+                  refractColor = _Crystal * refractColor; //r5.xyz
+                  float refectStrength = saturate(3.0 - length(float2(4,4) * saturate(controlUV.xy - float2(0.3, 0.3)))); //r1.w
+                  refractColor.xyz = refractColor * refectStrength; //r5.xyz
+                  albedo = albedo + refractColor * (1 - heightOffset * biomoColor.w);
                   
-                  screenTex = _Crystal * screenTex; //r5.xyz
-                  
-                  r6.xy = float2(4,4) * saturate(controlUV.xy - float2(0.3, 0.3));
-                  r1.w = saturate(3.0 - length(r6.xy));
-                  screenTex.xyz = screenTex.xyz * r1.www; //r5.xyz
-                  albedo = albedo + screenTex.xyz * (1 - heightOffset * biomoColor.w);
-                  
-                  normal = normalize(normal); //r3.xyz
-                  
-                  r1.xy = saturate(cb0[44].xy * r1.xz);
+                  float metallic = saturate(_MetallicMultiplier * mstex.x); //r1.x
+                  float smoothness = saturate(_SmoothMultiplier * mstex.z); //r1.y
                   
                   // r4.xyz = cb0[44].zzz * r4.xyz;
                   // r1.zw = cb0[46].yx * r4.ww;
@@ -507,9 +500,9 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                   float vDotH = max(0, unclamped_vDotH); //r5.x
                   
                   //cubed_ndotl
-                  r3.w = r3.w * 0.349999994 + 1;
-                  r5.y = r3.w * r3.w;
-                  r3.w = r5.y * r3.w;
+                  // r3.w = r3.w * 0.349999994 + 1;
+                  // r5.y = r3.w * r3.w;
+                  // r3.w = r5.y * r3.w;
                   
                   float upDotL = dot(upDir, lightDir); //r5.y
                   float nDotUp = dot(worldNormal, upDir); //r5.z
@@ -589,8 +582,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Crystal" {
                   }
                   sunsetColor = _LightColor0.xyz * sunsetColor;
                   
-                  r8.xy = float2(0.150000006,3) * r5.yy;
-                  r8.xy = saturate(r8.xy);
+                  // r8.xy = float2(0.150000006,3) * r5.yy;
+                  // r8.xy = saturate(r8.xy);
                   
                   atten = 0.8 * lerp(atten, 1, saturate(0.15 * upDotL)); //r1.z
                   lightColor = atten * lightColor; //r7.xyz
