@@ -1,16 +1,9 @@
 Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
   Properties {
-    _Color ("Color", Color) = (1,1,1,1)
     _MainTex ("Albedo (RGB)", 2D) = "white" {}
     _NormalTex ("Normal Map", 2D) = "bump" {}
     _MSTex ("Metallic Smoothness (RA)", 2D) = "white" {}
     _EmissionTex ("Emission (RGB)", 2D) = "black" {}
-    _Size ("Size", Float) = 400
-    _Thickness ("Thickness", Float) = 100
-    _AlbedoMultiplier ("漫反射倍率", Float) = 1
-    _NormalMultiplier ("法线倍率", Float) = 1
-    _EmissionMultiplier ("自发光倍率", Float) = 5.5
-    _AlphaClip ("透明通道剪切", Float) = 0
   }
   SubShader {
     LOD 200
@@ -64,11 +57,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
       float4 _SunColor;
       float4 _DysonEmission;
-      float4 _Color;
-      float _AlbedoMultiplier;
-      float _NormalMultiplier;
-      float _EmissionMultiplier;
-      float _AlphaClip;
       int _Global_DS_EditorMaskL;
       int _Global_DS_GameMaskL;
       int _Global_DS_HideFarSide;
