@@ -113,7 +113,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3 worldPos = mul(unity_ObjectToWorld, float4(vertPos.xyz, 1));
         float3 worldNormal = normalize(mul((float3x3)unity_ObjectToWorld, objNormal.xyz));
         float3 worldTangent = normalize(mul((float3x3)unity_ObjectToWorld, objTangent.xyz));
-        float3 worldBinormal = cross(worldNormal.xyz, worldTangent.xyz) * unity_WorldTransformParams.w * v.tangent.w;
+        float3 worldBinormal = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal);
 
         float invFrameRadius = rsqrt(dot(vertPos.xyz, vertPos.xyz));
         float falloffDistance = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
@@ -172,7 +172,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           worldPos.y = i.tbnw_matrix_y.w;
           worldPos.z = i.tbnw_matrix_z.w;
           
-          float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos.xyz);
+          float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
           float3 lightDir = normalize(-i.lightray_layer.xyz);
           
           bool isFarSide = dot(viewDir, lightDir) > 0;
