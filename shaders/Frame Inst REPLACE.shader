@@ -1,16 +1,9 @@
 Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
   Properties {
-    _Color ("Color", Vector) = (1,1,1,1)
     _MainTex ("Albedo (RGB)", 2D) = "white" {}
     _NormalTex ("Normal Map", 2D) = "bump" {}
     _MSTex ("Metallic Smoothness (RA)", 2D) = "white" {}
     _EmissionTex ("Emission (RGB)", 2D) = "black" {}
-    _Size ("Size", Float) = 400
-    _Thickness ("Thickness", Float) = 100
-    _AlbedoMultiplier ("漫反射倍率", Float) = 1
-    _NormalMultiplier ("法线倍率", Float) = 1
-    _EmissionMultiplier ("自发光倍率", Float) = 5.5
-    _AlphaClip ("透明通道剪切", Float) = 0
   }
   SubShader {
     LOD 200
@@ -23,8 +16,9 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       #pragma vertex vert
       #pragma fragment frag
       #include "UnityCG.cginc"
+      #include "CGIncludes/DSPCommon.cginc"
       #pragma target 5.0
-      //#pragma enable_d3d11_debug_symbols
+      #pragma enable_d3d11_debug_symbols
 
       struct Segment {
         uint layer;
@@ -63,11 +57,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
       float4 _SunColor;
       float4 _DysonEmission;
-      float4 _Color;
-      float _AlbedoMultiplier;
-      float _NormalMultiplier;
-      float _EmissionMultiplier;
-      float _AlphaClip;
       int _Global_DS_EditorMaskL;
       int _Global_DS_GameMaskL;
       int _Global_DS_HideFarSide;
@@ -124,10 +113,10 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3 worldPos = mul(unity_ObjectToWorld, float4(vertPos.xyz, 1));
         float3 worldNormal = normalize(mul((float3x3)unity_ObjectToWorld, objNormal.xyz));
         float3 worldTangent = normalize(mul((float3x3)unity_ObjectToWorld, objTangent.xyz));
-        float3 worldBinormal = cross(worldNormal.xyz, worldTangent.xyz) * unity_WorldTransformParams.w * v.tangent.w;
+        float3 worldBinormal = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal);
 
         float invFrameRadius = rsqrt(dot(vertPos.xyz, vertPos.xyz));
-        float falloffDistance = pow(1 + min(4, max(0, (5000 * invFrameRadius) - 0.2)), 2);
+        float falloffDistance = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
 
         uint renderPlace = asuint(_Global_DS_RenderPlace);
 
@@ -135,7 +124,8 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
         float distViewToPos = length(rayViewToPos.xyz);
-        float scaled_distViewToPos = 10000 * (log(0.0001 * distViewToPos) + 1) / distViewToPos;
+        //float scaled_distViewToPos = 10000 * (log(0.0001 * distViewToPos) + 1) / distViewToPos;
+        float scaled_distViewToPos = (10000.0 * log(distViewToPos) - 82103.4) / distViewToPos;
         rayViewToPos.xyz = distViewToPos > 10000 ? rayViewToPos.xyz * scaled_distViewToPos : rayViewToPos.xyz;
         worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos.xyz;
 
@@ -169,200 +159,169 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
       fout frag(v2f i, float4 screenPos : SV_POSITION)
       {
-        fout o;
-
-        const float4 icb[16] = { { 1.000000, 0, 0, 0},
-                                    { 9.000000, 0, 0, 0},
-                                    { 3.000000, 0, 0, 0},
-                                    { 11.000000, 0, 0, 0},
-                                    { 13.000000, 0, 0, 0},
-                                    { 5.000000, 0, 0, 0},
-                                    { 15.000000, 0, 0, 0},
-                                    { 7.000000, 0, 0, 0},
-                                    { 4.000000, 0, 0, 0},
-                                    { 12.000000, 0, 0, 0},
-                                    { 2.000000, 0, 0, 0},
-                                    { 10.000000, 0, 0, 0},
-                                    { 16.000000, 0, 0, 0},
-                                    { 8.000000, 0, 0, 0},
-                                    { 14.000000, 0, 0, 0},
-                                    { 6.000000, 0, 0, 0} };
-
-        float layer = round(i.lightray_layer.w);
-        layer = (uint)layer;
-
-        float shift_layer = 1 << (int)layer;
-
-        float gameMask = (int)shift_layer & asint(_Global_DS_GameMaskL);
-        float editorMask = (int)shift_layer & asint(_Global_DS_EditorMaskL);
-
-        float3 worldPos;
-        worldPos.x = i.tbnw_matrix_x.w;
-        worldPos.y = i.tbnw_matrix_y.w;
-        worldPos.z = i.tbnw_matrix_z.w;
-
-        float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos.xyz);
-        float3 lightDir = normalize(_Global_DS_SunPosition_Map.xyz - worldPos.xyz);
-        float VdotL = dot(viewDir, lightDir);
-
-        bool shouldHide = asuint(_Global_DS_HideFarSide) > 0.5 && VdotL > 0;
-        bool notPaintingLayer = (int)layer != asint(_Global_DS_PaintingLayerId) && asuint(_Global_DS_PaintingLayerId) > 0;
-        uint renderPlace = asuint(_Global_DS_RenderPlace);
-        if ((renderPlace < 1.5 && (uint)gameMask <= 0) || notPaintingLayer || shouldHide || (uint)editorMask <= 0) discard;
-
-        float3 mstex = tex2D(_MSTex, i.u_v_index.xy).xwy;
+          fout o;
+      
+          int layer = round(i.lightray_layer.w);
+          int layerMask = 1 << layer;
+          
+          bool showLayerInGame = (layerMask & asint(_Global_DS_GameMaskL)) > 0;
+          bool showLayerInEditor = (layerMask & asint(_Global_DS_EditorMaskL)) > 0;
+          
+          float3 worldPos;
+          worldPos.x = i.tbnw_matrix_x.w;
+          worldPos.y = i.tbnw_matrix_y.w;
+          worldPos.z = i.tbnw_matrix_z.w;
+          
+          float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
+          float3 lightDir = normalize(-i.lightray_layer.xyz);
+          
+          bool isFarSide = dot(viewDir, lightDir) > 0;
+          bool hideFarSide = asuint(_Global_DS_HideFarSide) > 0.5;
+          hideFarSide = hideFarSide && isFarSide;
+          bool isPainting = asuint(_Global_DS_PaintingLayerId) > 0;
+          bool notPaintingLayer = layer != asint(_Global_DS_PaintingLayerId);
+          bool hideNotPaintingLayer = notPaintingLayer && isPainting;
+          
+          bool showInEditor = !(hideNotPaintingLayer || hideFarSide) && showLayerInEditor;
+          
+          uint renderPlace = asuint(_Global_DS_RenderPlace);
+          bool isShowing = renderPlace < 1.5 ? showLayerInGame : showInEditor;
+          if (!isShowing) discard;
+          
+          uint instIndex = (uint)(i.u_v_index.z + 0.5);
+          
+          uint state = _InstBuffer[instIndex].state;
+          float progress0 = _InstBuffer[instIndex].progress0;
+          float progress1 = _InstBuffer[instIndex].progress1;
+          float progress = progress0 + progress1;
         
-        if (mstex.z < _AlphaClip - 0.001) discard;
-
-        uint instIndex = (uint)(i.u_v_index.z + 0.5);
-        uint state = _InstBuffer[instIndex].state;
-        float progress0 = _InstBuffer[instIndex].progress0;
-        float progress1 = _InstBuffer[instIndex].progress1;
-
-        uint2 bitmask;
-        float progress = progress0 + progress1;
-        float cutOut = 0;
-        if (progress < 0.01) {
+          float isPlanned = 0;
+          if (progress < 0.01) {
+              if (renderPlace > 1.5) {
+                if (state < 0.5) {
+                  uint2 pixelPos = screenPos.xy;
+                  int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
+                  if (mask != 0) discard;
+                }
+                isPlanned = 1;
+              } else {
+                discard;
+              }
+          }
+          
+          uint color = _InstBuffer[instIndex].color;
+          float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
+          float4 painted_color = float4(GammaToLinearSpace(gamma_color.xyz), gamma_color.w);
+          
+          float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
+          float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
+          float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
+          float emissionBoost = renderPlace > 0.5 ? 9.0 : 6.0;
+          emissionColor = emissionColor * emissionBoost;
+          
+          float3 albedo = tex2D(_MainTex, i.u_v_index.xy).xyz;
+          float albedoLuminance = dot(albedo.xyz, float3(0.3, 0.6, 0.1));
+          
           UNITY_BRANCH
           if (renderPlace < 1.5) {
-            discard;
+            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.2);
+            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.2);
+            albedo = lerp(standardStrength, boostedStrength, 0.7);
+          } else {
+            albedoLuminance = albedoLuminance * (1.0 - isPlanned);
+            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.3);
+            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.3);
+            albedo = lerp(standardStrength, boostedStrength, 0.6);
+            
+            bool usePaintedColor = painted_color.w > 0.5;
+            float paintedColorLuminance = dot(painted_color.xyz, float3(0.3, 0.6, 0.1));
+            float paintedColorLumAdjust = min(1.0, 0.1 / paintedColorLuminance);
+            
+            float3 dysonEditorDefaultColor = usePaintedColor ? painted_color.xyz : float3(0, 3, 0.75);
+            emissionColor = lerp(emissionColor, dysonEditorDefaultColor, isPlanned);
+            
+            float3 dysonEditorPaintedTint = float3(5,5,5) * painted_color.xyz * paintedColorLumAdjust;
+            float3 dysonEditorHoverDeleteColor = float3(3.7, 0.075, 0.125);
+            dysonEditorHoverDeleteColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverDeleteColor;
+            float3 dysonEditorHoverWhileSelectedColor = float3(0.75, 1.25, 3.9);
+            dysonEditorHoverWhileSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverWhileSelectedColor;
+            float3 dysonEditorSelectedColor = float3(0.5, 1.0, 3.85);
+            dysonEditorSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorSelectedColor;
+            float3 dysonEditorHoverColor = float3(3.5, 2.0, 1.0);
+            dysonEditorHoverColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverColor;
+            
+            emissionColor = state > 0.5 ? dysonEditorHoverColor : emissionColor; //state == 1 (hover select)
+            emissionColor = state > 1.5 ? dysonEditorSelectedColor : emissionColor; //state == 2 (selected)
+            emissionColor = state > 2.5 ? dysonEditorHoverWhileSelectedColor : emissionColor; //state == 3 (hover select while selected)
+            emissionColor = state > 3.5 ? dysonEditorHoverDeleteColor : emissionColor; //state == 4 (hover delete)
           }
-          else {
-            if (state < 0.5) {
-              int2 screen = (_ScreenParams.yx * screenPos.yx);
-              bitmask.y = ((~(-1 << 2)) << 2) & 0xffffffff;  screen.y = (((uint)screen.y << 2) & bitmask.y) | ((uint)0 & ~bitmask.y);
-              bitmask.x = ((~(-1 << 2)) << 0) & 0xffffffff;  screen.x = (((uint)screen.x << 0) & bitmask.x) | ((uint)screen.y & ~bitmask.x);
-              screen.x = 0.499 - icb[bitmask.x].x * 0.0588235296;
-              if (screen.x < 0) discard;
-            }
-            cutOut = 1;
-          }
-        }
-
-        float4 maintex = tex2D(_MainTex, i.u_v_index.xy).xyzw;
-        float3 normaltex = tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0,  -1)).xyw;
-
-        float3 unpackedNormal;
-        normaltex.x = normaltex.x * normaltex.z;
-        unpackedNormal.xy = normaltex.xy * float2(2,2) - float2(1,1);
-        unpackedNormal.z = sqrt(1 - min(1, dot(unpackedNormal.xy, unpackedNormal.xy)));
-        unpackedNormal.xy = _NormalMultiplier * unpackedNormal.xy;
-        
-        float3 emissiontex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
-        float3 emissionLuminance = dot(emissiontex.xyz, float3(0.3, 0.6, 0.1));
-
-        uint color = _InstBuffer[instIndex].color;
-
-        float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
-        float4 linear_color = float4(GammaToLinearSpace(gamma_color.xyz), gamma_color.w);
-
-        float3 emission = _EmissionMultiplier * lerp(_DysonEmission.xyz * emissionLuminance, linear_color.xyz * emissionLuminance, linear_color.www);
-        
-        float3 albedoColor = lerp(float3(1,1,1), _Color.xyz, saturate(1.25 * (maintex.w - 0.1))) * _AlbedoMultiplier * maintex.xyz;
-        
-
-        float3 tangentNormal = normalize(unpackedNormal);
-
-        float emissionMod = renderPlace > 0.5 ? 4.5 : 3.0;
-        
-        float3 defaultColor = float3(0,0,0);
-        float3 highStateColor = float3(0,0,0);
-        float3 medStateColor = float3(0,0,0);
-        float3 lowStateColor = float3(0,0,0);
-        float3 finalColor;
-
-        UNITY_BRANCH
-        if (renderPlace < 1.5)
-        {
-          float albedoLuminance = dot(albedoColor.xyz, float3(0.3, 0.6, 0.1));
-          float3 colorLerp1 = lerp(albedoLuminance, linear_color.xyz, linear_color.w * 0.2);
-          float3 colorLerp2 = albedoLuminance * lerp(float3(1,1,1), linear_color.xyz, linear_color.w * 0.2);
-          albedoColor.xyz = lerp(colorLerp1, colorLerp2, 0.7);
-          finalColor = emission * emissionMod;
-        }
-        else
-        {
-          float albedoLuminance = dot(albedoColor.xyz, float3(0.3, 0.6, 0.1)) * (1.0 - cutOut);
-          float3 colorLerp1 = lerp(albedoLuminance, linear_color.xyz, linear_color.w * 0.3);
-          float3 colorLerp2 = albedoLuminance * lerp(float3(1,1,1), linear_color.xyz, linear_color.w * 0.3);
-          albedoColor.xyz = lerp(colorLerp1, colorLerp2, 0.6);
-          emission = lerp(emission * emissionMod, linear_color.w > 0.5 ? linear_color.xyz : float3(0, 3, 0.75), cutOut);
-          defaultColor = float3(5,5,5) * linear_color.xyz * min(1, 0.1 / dot(linear_color.xyz, float3(0.3, 0.6, 0.1)));
-          highStateColor = linear_color.w > 0.5 ? defaultColor : float3(3.7, 0.075, 0.125);
-          medStateColor = linear_color.w > 0.5 ? defaultColor : float3(0.75, 1.25, 3.9);
-          lowStateColor = linear_color.w > 0.5 ? defaultColor : float3(0.5, 1.0, 3.85);
-          finalColor = linear_color.w > 0.5 ? defaultColor : float3(3.5, 2.0, 1.0);
-
-          finalColor = state > 0.5 ? finalColor : emission;
-          finalColor = state > 1.5 ? lowStateColor : finalColor;
-          finalColor = state > 2.5 ? medStateColor : finalColor;
-          finalColor = state > 3.5 ? highStateColor : finalColor;
-        }
-        
-
-        float3 rayPosToCam = _WorldSpaceCameraPos.xyz - worldPos.xyz;
-        float3 worldViewDir = normalize(rayPosToCam);
-
-        //float shadowMaskAttenuation = UnitySampleBakedOcclusion(float2(0,0), worldPos);
-
-        float3 worldNormal;
-        worldNormal.x = dot(i.tbnw_matrix_x.xyz, tangentNormal);
-        worldNormal.y = dot(i.tbnw_matrix_y.xyz, tangentNormal);
-        worldNormal.z = dot(i.tbnw_matrix_z.xyz, tangentNormal);
-        worldNormal.xyz = normalize(worldNormal.xyz);
-
-        float lengthLightRay = length(i.lightray_layer.xyz);
-        
-        float metallic = saturate(mstex.x * 0.85 + 0.149);
-        float perceptualRoughness = saturate(1 - mstex.y * 0.97);
-
-        float roughness = pow(perceptualRoughness, 2);
-        float roughnessSqr = pow(roughness, 2);
-        
-        float3 sunViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos.xyz);
-
-        float3 worldLightDir = -normalize(i.lightray_layer.xyz);
-        float3 halfDir = normalize(worldViewDir + worldLightDir);
-
-        float NdotV = dot(worldNormal.xyz, worldViewDir.xyz);
-        float NdotSV = dot(worldNormal.xyz, sunViewDir.xyz);
-        float NdotL = dot(worldNormal.xyz, worldLightDir.xyz);
-        float NdotH = dot(worldNormal.xyz, halfDir.xyz);
-        float VdotH = dot(worldViewDir.xyz, halfDir.xyz);
-        float clamp_NdotL = max(0, NdotL);
-        float clamp_NdotH = max(0, NdotH);
-        float clamp_VdotH = max(0, VdotH);
-        float clamp_NdotSV = max(0, NdotSV);
-        float clamp_NdotV = max(0, NdotV);
-        
-        float D = 0.25 * pow(rcp(pow(clamp_NdotH,2) * (roughnessSqr - 1) + 1),2) * roughnessSqr;
-
-        float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1, clamp_NdotV);
-        float gl = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1, clamp_NdotL);
-        float G = rcp(gv * gl);
-        
-        float fk = exp2((-6.98316002 + clamp_VdotH * -5.55472994) * clamp_VdotH);
-        float F = lerp(0.5 + metallic, 1, fk);
-
-        float sunStrength = renderPlace < 0.5 ? pow(saturate(1.02 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), -worldLightDir.xyz)), 0.4) : 1;
-        float3 sunColor = float3(1.25,1.25,1.25) * _SunColor.xyz * lengthLightRay;
-        float intensity = renderPlace > 1.5 ? saturate(pow(NdotL * 0.5 + 0.6, 3)) + clamp_NdotSV : saturate(pow(NdotL * 0.5 + 0.6, 3));
-        float3 sunLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * lerp(1, lengthLightRay, intensity) * intensity;
-        float3 anotherLight = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedoColor.xyz, metallic) * sunColor.xyz;
-        float3 ggx = anotherLight.xyz * (F * D * G + (1.0 / (10 * UNITY_PI))) * clamp_NdotL;
-
-        float3 finalLight = (sunLight.xyz * albedoColor.xyz * (1 - metallic * 0.6) + sunColor.xyz * clamp_NdotL * albedoColor.xyz * pow(1 - metallic, 0.6) + lerp(metallic, 1, albedoColor.xyz * 0.2) * ggx.xyz) * sunStrength;
-
-        float luminance = dot(finalLight.xyz, float3(0.3, 0.6, 0.1));
-
-        float3 lightNormalized = finalLight.xyz / luminance;
-        float bigLog = log(log(luminance) + 1) + 1;
-
-        finalLight.xyz = luminance > 1 ? lightNormalized.xyz * bigLog : finalLight.xyz;
-
-        o.sv_target.xyz = finalLight.xyz + finalColor.xyz;
-        o.sv_target.w = 1;
-        return o;
+          
+          float3 viewFromSunDir = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz);
+          float sideInView = dot(viewFromSunDir.xyz, -lightDir); // 1 if top of frame is facing player, 0 if viewing side on, -1 if bottom of frame is facing player (directly behind sun)
+          float innerFalloff = pow(saturate(1.02 + sideInView), 0.4); // 1 until view side on, then falloff as we view the bottom of frame until it moves behind the star. minimum .2
+          innerFalloff = renderPlace < 0.5 ? innerFalloff : 1;
+          
+          float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0, -1)));
+          float3 tangentNormal = normalize(unpackedNormal);
+          
+          float3 worldNormal;
+          worldNormal.x = dot(i.tbnw_matrix_x.xyz, tangentNormal);
+          worldNormal.y = dot(i.tbnw_matrix_y.xyz, tangentNormal);
+          worldNormal.z = dot(i.tbnw_matrix_z.xyz, tangentNormal);
+          worldNormal.xyz = normalize(worldNormal.xyz);
+          
+          float nDotL = dot(worldNormal.xyz, lightDir.xyz);
+          
+          float3 halfDir = normalize(viewDir + lightDir);
+          
+          float ambientLightFalloff = saturate(pow(nDotL * 0.5 + 0.6, 3.0)); //expo: -1=0, 0=0.2, 0.8=1
+          float3 editorViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos.xyz);//direction to camera but slightly higher
+          float editorNDotV = max(0, dot(worldNormal.xyz, editorViewDir));
+          ambientLightFalloff = renderPlace > 1.5 ? ambientLightFalloff + editorNDotV : ambientLightFalloff;
+          
+          float nDotV = max(0, dot(worldNormal.xyz, viewDir.xyz));
+          float nDotH = max(0, dot(worldNormal.xyz, halfDir.xyz));
+          float vDotH = max(0, dot(viewDir.xyz, halfDir.xyz));
+          float clamped_nDotL = max(0, nDotL);
+          
+          float2 msTex = tex2D(_MSTex, i.u_v_index.xy).xw;
+          float metallic = saturate(msTex.x * 0.85 + 0.149);
+          float perceptualRoughness = saturate(1 - msTex.y * 0.97);
+          float roughness = perceptualRoughness * perceptualRoughness;
+          float scaledMetallic = 0.5 + metallic;
+          float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
+          
+          float starLightStrength = length(i.lightray_layer.xyz);
+          
+          float3 ambientLightStrength = lerp(1.0, starLightStrength, ambientLightFalloff);
+          float3 ambientLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * ambientLightStrength * ambientLightFalloff;
+          float3 ambientColor = ambientLight.xyz * albedo.xyz;
+          
+          float3 sunColor = _SunColor.xyz * starLightStrength;
+          sunColor.xyz = float3(1.25, 1.25, 1.25) * sunColor.xyz;
+          float3 highlightColor = sunColor * clamped_nDotL * albedo.xyz;
+          
+          float3 specularColor = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedo.xyz, metallic);
+          specularColor = specularColor.xyz * sunColor;
+          float INV_TEN_PI = 0.0318309888;
+          specularColor.xyz = specularColor.xyz * clamped_nDotL * (specularTerm + INV_TEN_PI);
+          
+          float3 specColorMod = 0.2 * albedo.xyz * (1.0 - metallic) + metallic;
+          specularColor = specularColor * specColorMod.xyz;
+          
+          float3 finalColor = ambientColor.xyz * (1.0 - metallic * 0.6)
+              + highlightColor.xyz * pow(1.0 - metallic, 0.6)
+              + specularColor.xyz;
+          finalColor = finalColor.xyz * innerFalloff;
+          
+          float finalColorLuminance = dot(finalColor.xyz, float3(0.3, 0.6, 0.1));
+          finalColor.xyz = finalColorLuminance > 1 ? (finalColor.xyz / finalColorLuminance) * (log(log(finalColorLuminance) + 1) + 1) : finalColor.xyz;
+          
+          finalColor.xyz = finalColor.xyz + emissionColor;
+          
+          o.sv_target.xyz = finalColor;
+          o.sv_target.w = 1;
+          return o;
       }
       ENDCG
     }
