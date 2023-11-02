@@ -1,6 +1,6 @@
 # SphereOpt
 
-**SphereOpt v0.8.1 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
+**SphereOpt v0.8.2 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
 
 Improves rendering of Dyson Shells by drastically reducing the amount of data sent to the gpu per shell. Impact is larger depending on the number of shells in your Dyson Sphere(s).
 
@@ -13,6 +13,9 @@ In a new game with a large and densely packed sphere containing 5,240 shells, fr
 - does not support painting/colors on shells. this was just an additional layer of complexity that I haven't dug into yet. planning to have this in before 1.0.
 
 ## Changelog
+- v0.8.2
+  - fixes bright green glow on unbuilt frames/nodes in the dyson sphere editor
+  - slight performance increase
 - v0.8.1
   - fixes error when using shells on the 10th dyson sphere layer.
 - v0.8.0
