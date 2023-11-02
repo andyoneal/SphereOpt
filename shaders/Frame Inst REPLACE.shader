@@ -216,7 +216,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
           float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
           float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
-          float emissionBoost = renderPlace > 0.5 ? 4.5 : 3;
+          float emissionBoost = renderPlace > 0.5 ? 9.0 : 6.0;
           emissionColor = emissionColor * emissionBoost;
           
           float3 albedo = tex2D(_MainTex, i.u_v_index.xy).xyz;
