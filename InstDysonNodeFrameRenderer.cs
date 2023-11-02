@@ -27,7 +27,13 @@ namespace SphereOpt
         private static readonly int InstIndexBuffer = Shader.PropertyToID("_InstIndexBuffer");
         private static readonly int GlobalDSSunPosition = Shader.PropertyToID("_Global_DS_SunPosition");
         private static readonly int GlobalDSSunPositionMap = Shader.PropertyToID("_Global_DS_SunPosition_Map");
-        
+        private static readonly int CamPosition = Shader.PropertyToID("_CamPosition");
+        private static readonly int Scale = Shader.PropertyToID("_Scale");
+        private static readonly int UnityMatrixVp = Shader.PropertyToID("_UNITY_MATRIX_VP");
+        private static readonly int FOV = Shader.PropertyToID("_FOV");
+        private static readonly int LOD0IDBuffer = Shader.PropertyToID("_LOD0_ID_Buffer");
+        private static readonly int LOD1IDBuffer = Shader.PropertyToID("_LOD1_ID_Buffer");
+        private static readonly int LOD2IDBuffer = Shader.PropertyToID("_LOD2_ID_Buffer");
 
 
         public static void SetupMeshes()
@@ -96,7 +102,8 @@ namespace SphereOpt
                     }
                 }
             }
-            if(argBuffer != null) argBuffer.Release();
+
+            argBuffer?.Release();
             argBuffer = new ComputeBuffer(argArr.Length, 4, ComputeBufferType.IndirectArguments);
             argBuffer.SetData(argArr);
         }
@@ -132,11 +139,7 @@ namespace SphereOpt
                 {
                     for (int i = 0; i < 3; i++)
                     {
-                        if (lodBatchBuffers[b][i] != null)
-                        {
-                            lodBatchBuffers[b][i].Release();
-                        }
-
+                        lodBatchBuffers[b][i]?.Release();
                         lodBatchBuffers[b][i] = new ComputeBuffer(bufferCount, 4, ComputeBufferType.Append);
                     }
                 }
@@ -215,24 +218,24 @@ namespace SphereOpt
 
             var batches = dssr.batches;
             var instMats = dssr.instMats;
-            frameLODShader.SetVectorArray("_LayerRotations", layerRotations);
-            frameLODShader.SetVector("_CamPosition", cam.transform.position);
-            frameLODShader.SetFloat("_Scale", scale.x);
+            frameLODShader.SetVectorArray(LayerRotations, layerRotations);
+            frameLODShader.SetVector(CamPosition, cam.transform.position);
+            frameLODShader.SetFloat(Scale, scale.x);
             Matrix4x4 v = cam.worldToCameraMatrix;
             Matrix4x4 p = cam.projectionMatrix;
-            frameLODShader.SetMatrix("_UNITY_MATRIX_VP", p * v);
+            frameLODShader.SetMatrix(UnityMatrixVp, p * v);
             float fov = cam.fieldOfView;
-            frameLODShader.SetFloat("_FOV", fov);
+            frameLODShader.SetFloat(FOV, fov);
             var mpb = new MaterialPropertyBlock();
             mpb.SetVectorArray(LayerRotations, layerRotations);
             for (var b = 0; b < DysonSphereSegmentRenderer.totalProtoCount; b++)
             {
                 if (batches[b] == null || batches[b].cursor <= 0) continue;
                 batches[b].SyncBufferData();
-                frameLODShader.SetBuffer(csKernelId, "_InstBuffer", batches[b].buffer);
-                frameLODShader.SetBuffer(csKernelId, "_LOD0_ID_Buffer", lodBatchBuffers[b][0]);
-                frameLODShader.SetBuffer(csKernelId, "_LOD1_ID_Buffer", lodBatchBuffers[b][1]);
-                frameLODShader.SetBuffer(csKernelId, "_LOD2_ID_Buffer", lodBatchBuffers[b][2]);
+                frameLODShader.SetBuffer(csKernelId, InstBuffer, batches[b].buffer);
+                frameLODShader.SetBuffer(csKernelId, LOD0IDBuffer, lodBatchBuffers[b][0]);
+                frameLODShader.SetBuffer(csKernelId, LOD1IDBuffer, lodBatchBuffers[b][1]);
+                frameLODShader.SetBuffer(csKernelId, LOD2IDBuffer, lodBatchBuffers[b][2]);
                 for (int i = 0; i < 3; i++)
                 {
                     lodBatchBuffers[b][i].SetCounterValue(0u);

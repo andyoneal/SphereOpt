@@ -2,7 +2,7 @@ using HarmonyLib;
 
 namespace SphereOpt;
 
-public class Patch_DysonSphereSegmentRenderer
+public static class Patch_DysonSphereSegmentRenderer
 {
     /*[HarmonyPatch(typeof(GameCamera), "Logic")]
     [HarmonyPostfix]
@@ -18,7 +18,7 @@ public class Patch_DysonSphereSegmentRenderer
         index = -2;
         return true;
     }*/
-    
+
     [HarmonyPatch(typeof(DysonSphereSegmentRenderer.Batch), "SetCapacity")]
     [HarmonyPostfix]
     public static void Batch_SetCapacity(DysonSphereSegmentRenderer.Batch __instance, int newCap)

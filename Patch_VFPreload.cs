@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace SphereOpt;
 
-internal class Patch_VFPreload
+internal static class Patch_VFPreload
 {
     [HarmonyPatch(typeof(VFPreload), "SaveMaterial")]
     [HarmonyPrefix]

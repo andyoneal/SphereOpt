@@ -45,26 +45,6 @@ public class SphereOpt : BaseUnityPlugin
         CustomShaderManager.InitWithBundle(Bundle);
 
         CustomShaderManager.AddCustomShaderDesc(
-            "dysonshell-max",
-            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE"
-        );
-
-        CustomShaderManager.AddCustomShaderDesc(
-            "dysonshell-small",
-            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Small"
-        );
-
-        CustomShaderManager.AddCustomShaderDesc(
-            "dysonshell-large",
-            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Large"
-        );
-
-        CustomShaderManager.AddCustomShaderDesc(
-            "dysonshell-huge",
-            "VF Shaders/Dyson Sphere/Dyson Shell Unlit REPLACE Huge"
-        );
-
-        CustomShaderManager.AddCustomShaderDesc(
             "dysonshell-inst",
             "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
         );
