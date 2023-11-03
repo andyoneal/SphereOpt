@@ -13,7 +13,9 @@ namespace SphereOpt
 
         public struct PolygonData {
             public Vector3 pos;
+            public uint prevIndex;
             public Vector3 normal;
+            public uint nextIndex;
         }
 
         public struct HexData
@@ -29,7 +31,7 @@ namespace SphereOpt
         public struct ShellData
         {
             public int color;
-            public uint state; 
+            public uint state;
             public int progressBaseIndex;
             public int polyCount;
             public int polygonIndex;
@@ -85,7 +87,7 @@ namespace SphereOpt
             polygonPool = new PolygonData[64];
             hexProgressBuffer = new ComputeBuffer(64, 4);
             shellBuffer = new ComputeBuffer(11, 32);
-            polygonBuffer = new ComputeBuffer(64, 24);
+            polygonBuffer = new ComputeBuffer(64, 32);
             SetProps();
         }
         
@@ -139,17 +141,22 @@ namespace SphereOpt
             }
             polygonPool = destinationArray;
             polygonBuffer?.Release();
-            polygonBuffer = new ComputeBuffer(newCap, 24);
+            polygonBuffer = new ComputeBuffer(newCap, 32);
             props.SetBuffer(PolygonBuffer, polygonBuffer);
             polygonBufferIsDirty = true;
         }
 
         public int AddPolygonData(List<VectorLF3> polygon, VectorLF3[] polyn, bool clockwise) {
             if (polygonCursor + polygon.Count >= polygonPool.Length) SetCapacityPolygonPool(polygon.Count);
+            int firstIdx = polygonCursor;
+            int lastIdx = polygonCursor + polygon.Count - 1;
             for (var i = 0; i < polygon.Count; i++)
-            { 
-                polygonPool[polygonCursor + i].pos = polygon[i];
-                polygonPool[polygonCursor + i].normal = polyn[i];
+            {
+                int idx = polygonCursor + i;
+                polygonPool[idx].pos = polygon[i];
+                polygonPool[idx].prevIndex = idx == firstIdx ? lastIdx : idx - 1;
+                polygonPool[idx].normal = polyn[i];
+                polygonPool[idx].nextIndex = idx == lastIdx : firstIdx : idx + 1;
             }
 
             if (!clockwise)
