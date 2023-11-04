@@ -20,6 +20,8 @@ namespace SphereOpt
         private static DysonSphere dysonSphere;
         private static DysonSphereSegmentRenderer currentDSSR;
         
+        private static currentRenderPlace = ERenderPlace.Universe;
+        
         private static readonly int InstBuffer = Shader.PropertyToID("_InstBuffer");
         private static readonly int LayerRotations = Shader.PropertyToID("_LayerRotations");
         private static readonly int SunColor = Shader.PropertyToID("_SunColor");
@@ -150,6 +152,12 @@ namespace SphereOpt
         {
             if (currentDSSR == null || currentDSSR != dssr) switchDSSR(dssr);
             
+            bool renderPlaceChanged = false;
+            if (place != currentRenderPlace) {
+                bool renderPlaceChanged = true;
+                currentRenderPlace = place;
+            }
+            
             if (instBufferChangedSize)
             {
                 rebuildInstBuffers();
@@ -250,23 +258,25 @@ namespace SphereOpt
                 }
                 instMats[b].SetColor(SunColor, dysonSphere.sunColor);
                 instMats[b].SetColor(DysonEmission, dysonSphere.emissionColor);
-                switch (place)
-                {
-                    case ERenderPlace.Starmap:
-                        instMats[b].DisableKeyword("RP_UNIVERSE");
-                        instMats[b].EnableKeyword("RP_STARMAP");
-                        instMats[b].DisableKeyword("RP_DYSONEDITOR");
-                        break;
-                    case ERenderPlace.Dysonmap:
-                        instMats[b].DisableKeyword("RP_UNIVERSE");
-                        instMats[b].DisableKeyword("RP_STARMAP");
-                        instMats[b].EnableKeyword("RP_DYSONEDITOR");
-                        break;
-                    default:
-                        instMats[b].EnableKeyword("RP_UNIVERSE");
-                        instMats[b].DisableKeyword("RP_STARMAP");
-                        instMats[b].DisableKeyword("RP_DYSONEDITOR");
-                        break;
+                if (renderPlaceChanged) {
+                    switch (place)
+                    {
+                        case ERenderPlace.Starmap:
+                            instMats[b].DisableKeyword("RP_UNIVERSE");
+                            instMats[b].EnableKeyword("RP_STARMAP");
+                            instMats[b].DisableKeyword("RP_DYSONEDITOR");
+                            break;
+                        case ERenderPlace.Dysonmap:
+                            instMats[b].DisableKeyword("RP_UNIVERSE");
+                            instMats[b].DisableKeyword("RP_STARMAP");
+                            instMats[b].EnableKeyword("RP_DYSONEDITOR");
+                            break;
+                        default:
+                            instMats[b].EnableKeyword("RP_UNIVERSE");
+                            instMats[b].DisableKeyword("RP_STARMAP");
+                            instMats[b].DisableKeyword("RP_DYSONEDITOR");
+                            break;
+                    }
                 }
                 mpb.SetBuffer(InstBuffer, batches[b].buffer);
                 for (int j = 0; j < 3; j++)
