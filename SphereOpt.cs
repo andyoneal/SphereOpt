@@ -18,8 +18,9 @@ public class SphereOpt : BaseUnityPlugin
 
     private static Dictionary<int, InstDysonShellRenderer> instRenderers = new();
     
-    private ConfigEntry<bool> configDEBUGSameTitleScreen;
-    private ConfigEntry<bool> configDEBUGDisableSunShafts;
+    public static ConfigEntry<bool> configDEBUGSameTitleScreen;
+    public static ConfigEntry<bool> configDEBUGDisableSunShafts;
+    public static ConfigEntry<bool> configDEBUGDisableFlare;
 
     private static AssetBundle Bundle
     {
@@ -55,6 +56,11 @@ public class SphereOpt : BaseUnityPlugin
             "DisableSunShafts",
             false,
             "Disable the sun shafts image effect.");
+
+        configDEBUGDisableFlare = Config.Bind("Debug",
+            "DisableLensFlare",
+            false,
+            "Disable the lens flare image effect.");
 
         CustomShaderManager.InitWithBundle(Bundle);
 

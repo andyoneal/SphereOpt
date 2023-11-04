@@ -20,7 +20,7 @@ namespace SphereOpt
         private static DysonSphere dysonSphere;
         private static DysonSphereSegmentRenderer currentDSSR;
         
-        private static currentRenderPlace = ERenderPlace.Universe;
+        private static ERenderPlace currentRenderPlace = ERenderPlace.Universe;
         
         private static readonly int InstBuffer = Shader.PropertyToID("_InstBuffer");
         private static readonly int LayerRotations = Shader.PropertyToID("_LayerRotations");
@@ -154,7 +154,7 @@ namespace SphereOpt
             
             bool renderPlaceChanged = false;
             if (place != currentRenderPlace) {
-                bool renderPlaceChanged = true;
+                renderPlaceChanged = true;
                 currentRenderPlace = place;
             }
             
