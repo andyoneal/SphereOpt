@@ -90,7 +90,7 @@ namespace SphereOpt
             polygonBuffer = new ComputeBuffer(64, 32);
             SetProps();
         }
-        
+
         public void Free()
         {
             if (polygonBuffer != null)
@@ -99,21 +99,21 @@ namespace SphereOpt
                 polygonBuffer = null;
             }
             polygonPool = null;
-            
+
             if (hexProgressBuffer != null)
             {
                 hexProgressBuffer.Release();
                 hexProgressBuffer = null;
             }
             hexProgressPool = null;
-            
+
             if (shellBuffer != null)
             {
                 shellBuffer.Release();
                 shellBuffer = null;
             }
             shellPool = null;
-            
+
             if (hexBuffer != null)
             {
                 hexBuffer.Release();
@@ -121,7 +121,7 @@ namespace SphereOpt
             }
             hexPool.Clear();
             hexPool = null;
-            
+
             progressBaseCursor = 0;
             polygonCursor = 0;
             cachedHexCount = -1;
@@ -134,7 +134,7 @@ namespace SphereOpt
         {
             var newCap = polygonPool.Length + nextCount * 32;
             var destinationArray = new PolygonData[newCap];
-            
+
             if (polygonPool != null)
             {
                 Array.Copy(polygonPool, destinationArray, polygonPool.Length);
@@ -154,9 +154,9 @@ namespace SphereOpt
             {
                 int idx = polygonCursor + i;
                 polygonPool[idx].pos = polygon[i];
-                polygonPool[idx].prevIndex = idx == firstIdx ? lastIdx : idx - 1;
+                polygonPool[idx].prevIndex = (uint)(idx == firstIdx ? lastIdx : idx - 1);
                 polygonPool[idx].normal = polyn[i];
-                polygonPool[idx].nextIndex = idx == lastIdx : firstIdx : idx + 1;
+                polygonPool[idx].nextIndex = (uint)(idx == lastIdx ? firstIdx : idx + 1);
             }
 
             if (!clockwise)
@@ -164,9 +164,12 @@ namespace SphereOpt
                 Array.Reverse(polygonPool, polygonCursor, polygon.Count);
                 for (int i = 0; i < polygon.Count; i++)
                 {
+                    int idx = polygonCursor + i;
                     Vector3 vector = polygonPool[polygonCursor + i].pos;
                     Vector3 vector2 = polygonPool[polygonCursor + (i + 1) % polygon.Count].pos;
                     polygonPool[polygonCursor + i].normal = VectorLF3.Cross(vector, vector2).normalized;
+                    polygonPool[idx].prevIndex = (uint)(idx == firstIdx ? lastIdx : idx - 1);
+                    polygonPool[idx].nextIndex = (uint)(idx == lastIdx ? firstIdx : idx + 1);
                 }
             }
 
@@ -278,14 +281,13 @@ namespace SphereOpt
                 //propsAreDirty = false;
             }
         }
-        
+
         public void RemoveDysonShell(int shellId)
         {
             hexPool.RemoveAll(x => x.shellIndex == shellId);
 
             hexBufferIsDirty = true;
             hexProgressBufferIsDirty = true;
-
 
             var pbi = shellPool[shellId].polygonIndex;
             for (int i = 0; i < shellPool[shellId].polyCount; i++)

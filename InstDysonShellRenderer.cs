@@ -8,7 +8,7 @@ namespace SphereOpt
     {
         private static Mesh _HexMesh;
         private static Material _HexMat;
-        
+
         public static Material HexMat
         {
             get {
@@ -16,7 +16,7 @@ namespace SphereOpt
                 return _HexMat;
             }
         }
-        
+
         public static Mesh HexMesh
         {
             get {
@@ -41,7 +41,6 @@ namespace SphereOpt
         private static readonly int SunColor = Shader.PropertyToID("_SunColor");
         private static readonly int DysonEmission = Shader.PropertyToID("_DysonEmission");
 
-
         private static void SetupMesh()
         {
             _HexMesh = new Mesh();
@@ -50,7 +49,6 @@ namespace SphereOpt
             var t1axis = new Vector3(-40f, (float)(40.0 / Math.Sqrt(3)), 0);
             var t2axis = new Vector3(40f, (float)(40.0 / Math.Sqrt(3)), 0);
             var t0axis = new Vector3(0, (float)(80.0 / Math.Sqrt(3)), 0);
-
 
             newVerts[0] = Vector3.zero;
             newVerts[1] = t0axis;
@@ -96,7 +94,7 @@ namespace SphereOpt
             }
             instShellLayers = null;
         }
-        
+
         public InstDysonShellLayer getOrCreateInstShellLayer(int layerId)
         {
             if (instShellLayers[layerId] == null)
@@ -110,7 +108,6 @@ namespace SphereOpt
         {
             return instShellLayers[layerId];
         }
-        
 
         public InstDysonShellRenderer(DysonSphere _dysonSphere)
         {
@@ -133,7 +130,6 @@ namespace SphereOpt
         {
             args[layerId * 5 + 1] = hexCount;
             argsBufferIsDirty = true;
-
         }
 
         public void RenderShells(ERenderPlace place, int editorMask, int gameMask)
@@ -223,7 +219,7 @@ namespace SphereOpt
                 instShellLayers[layerId] = null;
             }
         }
-        
+
         public void RemoveLayer(InstDysonShellLayer layer)
         {
             if (layer == null) return;

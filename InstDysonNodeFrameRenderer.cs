@@ -186,6 +186,7 @@ namespace SphereOpt
             {
                 case ERenderPlace.Universe:
                     shouldRender = gameMask != 0;
+
                     break;
                 case ERenderPlace.Starmap:
                     shouldRender = gameMask != 0;
@@ -249,6 +250,24 @@ namespace SphereOpt
                 }
                 instMats[b].SetColor(SunColor, dysonSphere.sunColor);
                 instMats[b].SetColor(DysonEmission, dysonSphere.emissionColor);
+                switch (place)
+                {
+                    case ERenderPlace.Starmap:
+                        instMats[b].DisableKeyword("RP_UNIVERSE");
+                        instMats[b].EnableKeyword("RP_STARMAP");
+                        instMats[b].DisableKeyword("RP_DYSONEDITOR");
+                        break;
+                    case ERenderPlace.Dysonmap:
+                        instMats[b].DisableKeyword("RP_UNIVERSE");
+                        instMats[b].DisableKeyword("RP_STARMAP");
+                        instMats[b].EnableKeyword("RP_DYSONEDITOR");
+                        break;
+                    default:
+                        instMats[b].EnableKeyword("RP_UNIVERSE");
+                        instMats[b].DisableKeyword("RP_STARMAP");
+                        instMats[b].DisableKeyword("RP_DYSONEDITOR");
+                        break;
+                }
                 mpb.SetBuffer(InstBuffer, batches[b].buffer);
                 for (int j = 0; j < 3; j++)
                 {
@@ -261,6 +280,6 @@ namespace SphereOpt
             }
         }
 
-        
+
     }
 }
