@@ -5,6 +5,7 @@ using HarmonyLib;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
+using BepInEx.Configuration;
 
 namespace SphereOpt;
 
@@ -16,6 +17,9 @@ public class SphereOpt : BaseUnityPlugin
     private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
 
     private static Dictionary<int, InstDysonShellRenderer> instRenderers = new();
+    
+    private ConfigEntry<bool> configDEBUGSameTitleScreen;
+    private ConfigEntry<bool> configDEBUGDisableSunShafts;
 
     private static AssetBundle Bundle
     {
@@ -41,6 +45,16 @@ public class SphereOpt : BaseUnityPlugin
     private void Awake()
     {
         logger = Logger;
+        
+        configDEBUGSameTitleScreen = Config.Bind("Debug", 
+            "AlwaysSameTitleScreen",
+            false,
+            "Show the same title screen on every launch instead of a random one.");
+            
+        configDEBUGDisableSunShafts = Config.Bind("Debug", 
+            "DisableSunShafts",
+            false,
+            "Disable the sun shafts image effect.");
 
         CustomShaderManager.InitWithBundle(Bundle);
 
@@ -65,6 +79,7 @@ public class SphereOpt : BaseUnityPlugin
         Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
         Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereSegmentRenderer));
+        Harmony.CreateAndPatchAll(typeof(Patch_DEBUG));
     }
 
     public static InstDysonShellRenderer getInstDysonShellRendererForSphere(DysonSphere ds)

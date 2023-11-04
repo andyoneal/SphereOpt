@@ -19,6 +19,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       #include "CGIncludes/DSPCommon.cginc"
       #pragma target 5.0
       #pragma enable_d3d11_debug_symbols
+      #pragma multi_compile RP_UNIVERSE RP_STARMAP RP_DYSONEDITOR
 
       struct Segment {
         uint layer;
@@ -44,7 +45,9 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float4 tbnw_matrix_y : TEXCOORD1;
         float4 tbnw_matrix_z : TEXCOORD2;
         float3 u_v_index : TEXCOORD3;
+        #if defined(RP_DYSONEDITOR)
         float4 lightray_layer : TEXCOORD4;
+        #endif
       };
 
       struct fout
@@ -62,7 +65,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       int _Global_DS_HideFarSide;
       int _Global_DS_PaintingLayerId;
       float3 _Global_DS_SunPosition;
-      int _Global_DS_RenderPlace;
       float3 _Global_DS_SunPosition_Map;
       float4 _LayerRotations[11 * 3];
       sampler2D _MainTex;
@@ -87,8 +89,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3 pos1 = _InstBuffer[instIndex].pos1;
         float3 pos0topos1 = pos1.xyz - pos0.xyz;
         float3 stretchedPos = lerp(pos0.xyz, pos1.xyz, v.vertex.z * 0.98 + 0.01);
-
-        int compare_instanceID = v.vertex.z < 0.5 ? (int)instIndex - 1 : (int) instIndex + 1;
+        int compare_instanceID = v.vertex.z < 0.5 ? (int)instIndex - 1 : (int)instIndex + 1;
 
         float3 compare_pos0 = _InstBuffer[compare_instanceID].pos0;
         float3 compare_pos1 = _InstBuffer[compare_instanceID].pos1;
@@ -101,7 +102,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
         z_axis.xyz = normalize(z_axis.xyz);
         float3 y_axis = normalize(stretchedPos.xyz);
-        float3 x_axis = normalize(cross(y_axis.xyz, z_axis.xyz));
+        float3 x_axis = cross(y_axis.xyz, z_axis.xyz);
         z_axis.xyz = cross(x_axis.xyz, y_axis.xyz);
 
         float3x3 rotateMatrix = transpose(float3x3(x_axis, y_axis, z_axis));
@@ -111,25 +112,33 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3 objTangent = mul(rotateMatrix, v.tangent.xyz);
 
         float3 worldPos = mul(unity_ObjectToWorld, float4(vertPos.xyz, 1));
-        float3 worldNormal = normalize(mul((float3x3)unity_ObjectToWorld, objNormal.xyz));
-        float3 worldTangent = normalize(mul((float3x3)unity_ObjectToWorld, objTangent.xyz));
+        float3 worldNormal = mul((float3x3)unity_ObjectToWorld, objNormal.xyz);
+        float3 worldTangent = mul((float3x3)unity_ObjectToWorld, objTangent.xyz);
         float3 worldBinormal = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal);
 
-        float invFrameRadius = rsqrt(dot(vertPos.xyz, vertPos.xyz));
+        #if defined(RP_DYSONEDITOR)
+        float invFrameRadius = rsqrt(dot(stretchedPos.xyz, stretchedPos.xyz));
         float falloffDistance = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
-
-        uint renderPlace = asuint(_Global_DS_RenderPlace);
-
-        float3 lightray = renderPlace < 0.5 ? normalize(worldPos.xyz - _Global_DS_SunPosition.xyz) * falloffDistance : normalize(worldPos.xyz - _Global_DS_SunPosition_Map.xyz) * falloffDistance;
-
+        float3 lightray = normalize(worldPos.xyz);
+        lightray *= falloffDistance;
+        #endif
+        
         float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
         float distViewToPos = length(rayViewToPos.xyz);
         //float scaled_distViewToPos = 10000 * (log(0.0001 * distViewToPos) + 1) / distViewToPos;
         float scaled_distViewToPos = (10000.0 * log(distViewToPos) - 82103.4) / distViewToPos;
         rayViewToPos.xyz = distViewToPos > 10000 ? rayViewToPos.xyz * scaled_distViewToPos : rayViewToPos.xyz;
-        worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos.xyz;
+        float3 scaled_worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos.xyz;
+        
+        // float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
+        // float distSqrViewToPos = dot(rayViewToPos, rayViewToPos);
+        // if(distSqrViewToPos > (10000.0 * 10000.0)) {
+        //   float scaled_distViewToPos = (10000.0 * log(distSqrViewToPos) - 82103.4) / sqrt(distSqrViewToPos);
+        //   rayViewToPos.xyz = rayViewToPos.xyz * scaled_distViewToPos;
+        //   worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos;
+        // }
 
-        float4 clipPos = UnityWorldToClipPos(worldPos.xyz);
+        float4 clipPos = UnityWorldToClipPos(scaled_worldPos.xyz);
 
         o.position.xyzw = clipPos.xyzw;
 
@@ -149,8 +158,10 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         o.u_v_index.xy = v.texcoord.xy;
         o.u_v_index.z = instIndex;
 
+        #if defined(RP_DYSONEDITOR)
         o.lightray_layer.xyz = lightray;
         o.lightray_layer.w = layer;
+        #endif
 
         
 
@@ -160,11 +171,13 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       fout frag(v2f i, float4 screenPos : SV_POSITION)
       {
           fout o;
-      
+          
+          uint instIndex = (uint)(i.u_v_index.z + 0.5);
+          
+          #if defined(RP_DYSONEDITOR)
           int layer = round(i.lightray_layer.w);
           int layerMask = 1 << layer;
           
-          bool showLayerInGame = (layerMask & asint(_Global_DS_GameMaskL)) > 0;
           bool showLayerInEditor = (layerMask & asint(_Global_DS_EditorMaskL)) > 0;
           
           float3 worldPos;
@@ -183,12 +196,8 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           bool hideNotPaintingLayer = notPaintingLayer && isPainting;
           
           bool showInEditor = !(hideNotPaintingLayer || hideFarSide) && showLayerInEditor;
-          
-          uint renderPlace = asuint(_Global_DS_RenderPlace);
-          bool isShowing = renderPlace < 1.5 ? showLayerInGame : showInEditor;
-          if (!isShowing) discard;
-          
-          uint instIndex = (uint)(i.u_v_index.z + 0.5);
+
+          if(!showInEditor) discard;
           
           uint state = _InstBuffer[instIndex].state;
           float progress0 = _InstBuffer[instIndex].progress0;
@@ -197,17 +206,14 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         
           float isPlanned = 0;
           if (progress < 0.01) {
-              if (renderPlace > 1.5) {
-                if (state < 0.5) {
-                  uint2 pixelPos = screenPos.xy;
-                  int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
-                  if (mask != 0) discard;
-                }
-                isPlanned = 1;
-              } else {
-                discard;
-              }
+            if (state < 0.5) {
+              uint2 pixelPos = screenPos.xy;
+              int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
+              if (mask != 0) discard;
+            }
+            isPlanned = 1;
           }
+          #endif
           
           uint color = _InstBuffer[instIndex].color;
           float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
@@ -216,50 +222,79 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
           float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
           float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
-          float emissionBoost = renderPlace > 0.5 ? 9.0 : 6.0;
+          #if defined(RP_DYSONEDITOR) || defined(RP_STARMAP)
+          float emissionBoost = 9.0;
+          #else
+          float emissionBoost = 6.0;
+          #endif
+          
           emissionColor = emissionColor * emissionBoost;
           
           float3 albedo = tex2D(_MainTex, i.u_v_index.xy).xyz;
           float albedoLuminance = dot(albedo.xyz, float3(0.3, 0.6, 0.1));
           
-          UNITY_BRANCH
-          if (renderPlace < 1.5) {
-            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.2);
-            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.2);
-            albedo = lerp(standardStrength, boostedStrength, 0.7);
-          } else {
-            albedoLuminance = albedoLuminance * (1.0 - isPlanned);
-            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.3);
-            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.3);
-            albedo = lerp(standardStrength, boostedStrength, 0.6);
-            
-            bool usePaintedColor = painted_color.w > 0.5;
-            float paintedColorLuminance = dot(painted_color.xyz, float3(0.3, 0.6, 0.1));
-            float paintedColorLumAdjust = min(1.0, 0.1 / paintedColorLuminance);
-            
-            float3 dysonEditorDefaultColor = usePaintedColor ? painted_color.xyz : float3(0, 3, 0.75);
-            emissionColor = lerp(emissionColor, dysonEditorDefaultColor, isPlanned);
-            
-            float3 dysonEditorPaintedTint = float3(5,5,5) * painted_color.xyz * paintedColorLumAdjust;
-            float3 dysonEditorHoverDeleteColor = float3(3.7, 0.075, 0.125);
-            dysonEditorHoverDeleteColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverDeleteColor;
-            float3 dysonEditorHoverWhileSelectedColor = float3(0.75, 1.25, 3.9);
-            dysonEditorHoverWhileSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverWhileSelectedColor;
-            float3 dysonEditorSelectedColor = float3(0.5, 1.0, 3.85);
-            dysonEditorSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorSelectedColor;
-            float3 dysonEditorHoverColor = float3(3.5, 2.0, 1.0);
-            dysonEditorHoverColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverColor;
-            
-            emissionColor = state > 0.5 ? dysonEditorHoverColor : emissionColor; //state == 1 (hover select)
-            emissionColor = state > 1.5 ? dysonEditorSelectedColor : emissionColor; //state == 2 (selected)
-            emissionColor = state > 2.5 ? dysonEditorHoverWhileSelectedColor : emissionColor; //state == 3 (hover select while selected)
-            emissionColor = state > 3.5 ? dysonEditorHoverDeleteColor : emissionColor; //state == 4 (hover delete)
-          }
+          #if defined(RP_UNIVERSE) || defined(RP_STARMAP)
+          float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.2);
+          float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.2);
+          albedo = lerp(standardStrength, boostedStrength, 0.7);
+          #else
+          albedoLuminance = albedoLuminance * (1.0 - isPlanned);
+          float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.3);
+          float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.3);
+          albedo = lerp(standardStrength, boostedStrength, 0.6);
           
+          bool usePaintedColor = painted_color.w > 0.5;
+          float paintedColorLuminance = dot(painted_color.xyz, float3(0.3, 0.6, 0.1));
+          float paintedColorLumAdjust = min(1.0, 0.1 / paintedColorLuminance);
+          
+          float3 dysonEditorDefaultColor = usePaintedColor ? painted_color.xyz : float3(0, 3, 0.75);
+          emissionColor = lerp(emissionColor, dysonEditorDefaultColor, isPlanned);
+          
+          float3 dysonEditorPaintedTint = float3(5,5,5) * painted_color.xyz * paintedColorLumAdjust;
+          float3 dysonEditorHoverDeleteColor = float3(3.7, 0.075, 0.125);
+          dysonEditorHoverDeleteColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverDeleteColor;
+          float3 dysonEditorHoverWhileSelectedColor = float3(0.75, 1.25, 3.9);
+          dysonEditorHoverWhileSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverWhileSelectedColor;
+          float3 dysonEditorSelectedColor = float3(0.5, 1.0, 3.85);
+          dysonEditorSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorSelectedColor;
+          float3 dysonEditorHoverColor = float3(3.5, 2.0, 1.0);
+          dysonEditorHoverColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverColor;
+          
+          emissionColor = state > 0.5 ? dysonEditorHoverColor : emissionColor; //state == 1 (hover select)
+          emissionColor = state > 1.5 ? dysonEditorSelectedColor : emissionColor; //state == 2 (selected)
+          emissionColor = state > 2.5 ? dysonEditorHoverWhileSelectedColor : emissionColor; //state == 3 (hover select while selected)
+          emissionColor = state > 3.5 ? dysonEditorHoverDeleteColor : emissionColor; //state == 4 (hover delete)
+          #endif
+          
+          #if defined(RP_UNIVERSE) || defined(RP_STARMAP)
+          float3 worldPos;
+          worldPos.x = i.tbnw_matrix_x.w;
+          worldPos.y = i.tbnw_matrix_y.w;
+          worldPos.z = i.tbnw_matrix_z.w;
+          
+          #if defined(RP_UNIVERSE)
+          float3 lightDir = normalize(_Global_DS_SunPosition.xyz - worldPos.xyz);
+          #else
+          float3 lightDir = normalize(_Global_DS_SunPosition_Map.xyz - worldPos.xyz);
+          #endif
+          
+          float3 pos0 = _InstBuffer[instIndex].pos0;
+          float invFrameRadius = rsqrt(dot(pos0.xyz, pos0.xyz));
+          float starLightStrength = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
+          
+          float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
+          //float3 lightDir = normalize(-i.lightray_layer.xyz);
+          #else
+          float starLightStrength = length(i.lightray_layer.xyz);
+          #endif
+          
+          #if defined(RP_UNIVERSE)
           float3 viewFromSunDir = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz);
           float sideInView = dot(viewFromSunDir.xyz, -lightDir); // 1 if top of frame is facing player, 0 if viewing side on, -1 if bottom of frame is facing player (directly behind sun)
           float innerFalloff = pow(saturate(1.02 + sideInView), 0.4); // 1 until view side on, then falloff as we view the bottom of frame until it moves behind the star. minimum .2
-          innerFalloff = renderPlace < 0.5 ? innerFalloff : 1;
+          #else
+          float innerFalloff = 1;
+          #endif
           
           float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0, -1)));
           float3 tangentNormal = normalize(unpackedNormal);
@@ -275,9 +310,12 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float3 halfDir = normalize(viewDir + lightDir);
           
           float ambientLightFalloff = saturate(pow(nDotL * 0.5 + 0.6, 3.0)); //expo: -1=0, 0=0.2, 0.8=1
+          
+          #if defined(RP_DYSONEDITOR)
           float3 editorViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos.xyz);//direction to camera but slightly higher
           float editorNDotV = max(0, dot(worldNormal.xyz, editorViewDir));
-          ambientLightFalloff = renderPlace > 1.5 ? ambientLightFalloff + editorNDotV : ambientLightFalloff;
+          ambientLightFalloff = ambientLightFalloff + editorNDotV;
+          #endif
           
           float nDotV = max(0, dot(worldNormal.xyz, viewDir.xyz));
           float nDotH = max(0, dot(worldNormal.xyz, halfDir.xyz));
@@ -291,7 +329,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float scaledMetallic = 0.5 + metallic;
           float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
           
-          float starLightStrength = length(i.lightray_layer.xyz);
+          //float starLightStrength = length(i.lightray_layer.xyz);
           
           float3 ambientLightStrength = lerp(1.0, starLightStrength, ambientLightFalloff);
           float3 ambientLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * ambientLightStrength * ambientLightFalloff;
@@ -318,6 +356,18 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           finalColor.xyz = finalColorLuminance > 1 ? (finalColor.xyz / finalColorLuminance) * (log(log(finalColorLuminance) + 1) + 1) : finalColor.xyz;
           
           finalColor.xyz = finalColor.xyz + emissionColor;
+          
+          // #if defined(RP_UNIVERSE)
+          // finalColor += float3(1,0,0);
+          // #endif
+          // 
+          // #if defined(RP_STARMAP)
+          // finalColor += float3(0,1,0);
+          // #endif
+          // 
+          // #if defined(RP_DYSONEDITOR)
+          // finalColor += float3(0,0,1);
+          // #endif
           
           o.sv_target.xyz = finalColor;
           o.sv_target.w = 1;

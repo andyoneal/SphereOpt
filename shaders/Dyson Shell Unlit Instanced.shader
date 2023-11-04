@@ -259,6 +259,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float3 nextLinePos = _PolygonBuffer[nextIndex].pos;
           float3 nextLineNormal = _PolygonBuffer[nextIndex].normal;
           uint nextnextIndex = _PolygonBuffer[nextIndex].nextIndex;
+          
           float3 nextNextLinePos = _PolygonBuffer[nextnextIndex].pos;
           
           float3 thisLineDir = nextLinePos - thisLinePos;
@@ -411,7 +412,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float specularStrength = dot(albedo, float3(0.3, 0.6, 0.1));
           float2 msTex = tex2D(_MSTex, uv.xy).xw;
           
-          float metallicFactor, fadeOut, roughnessSqr, finalAlpha;
+          float metallicFactor, fadeOut, roughness, finalAlpha;
           float3 finalColor;
           if(renderPlace > 1.5) {
             float3 shellColor = i.color.w > 0.5 ? i.color.xyz : (asint(_Global_DS_PaintingLayerId) == asint(_LayerId) ? float3(0, 0.3, 0.65) : float3(0, 0.8, 0.6));
@@ -431,7 +432,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
             finalAlpha = _EmissionMultiplier * emissionFactor;
             metallicFactor = saturate(metallic * 0.85 + 0.149);
             float perceptualRoughness = min(1, 1 - smoothness * 0.97);
-            roughnessSqr = pow(min(1, 1 - smoothness * 0.97), 4);
+            roughness = pow(min(1, 1 - smoothness * 0.97), 2);
           }
           else {
             float multiplyEmission = renderPlace > 0.5 ? 1.8  : 2.5;
@@ -440,7 +441,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
             finalColor.xyz = emission.xyz * multiplyEmission;
             finalAlpha = _EmissionMultiplier * colorControl;
             metallicFactor = saturate(msTex.x * (0.85 - 0.85 * scaleMetallic) + 0.149);
-            roughnessSqr = pow(1 - 0.97 * min(0.8, msTex.y), 4); //pow(min(1, 1 - min(0.8, msTex.y) * 0.97), 2);
+            roughness = pow(1 - 0.97 * min(0.8, msTex.y), 2); //pow(min(1, 1 - min(0.8, msTex.y) * 0.97), 2);
           }
       
           float4 normalTex = tex2Dbias(_NormalTex, float4(uv.xy, 0, lodBias)).xyzw;
@@ -462,16 +463,17 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float clamp_NdotH = max(0, NdotH);
           float clamp_VdotH = max(0, VdotH);
       
-          float D = 0.25 * pow(rcp(clamp_NdotH * clamp_NdotH * (roughnessSqr - 1) + 1),2) * roughnessSqr;
-      
-          float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, NdotV);
-          float gl = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, clamp_NdotL);
-          float G = rcp(gv * gl);
-      
-          float fk = exp2((clamp_VdotH * -5.55472994 - 6.98316002) * clamp_VdotH);
-          float F = lerp(0.5 + metallicFactor, 1.0, fk);
+      //     float D = 0.25 * pow(rcp(clamp_NdotH * clamp_NdotH * (roughnessSqr - 1) + 1),2) * roughnessSqr;
+      // 
+      //     float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, NdotV);
+      //     float gl = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, clamp_NdotL);
+      //     float G = rcp(gv * gl);
+      // 
+      //     float fk = exp2((clamp_VdotH * -5.55472994 - 6.98316002) * clamp_VdotH);
+      //     float F = lerp(0.5 + metallicFactor, 1.0, fk);
           
-          float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
+          float scaledMetallic = 0.5 + metallicFactor;
+          float specularTerm = GGX(roughness, scaledMetallic, clamp_NdotH, NdotV, clamp_NdotL, clamp_NdotH);
       
           float sunStrength = renderPlace < 0.5 ? pow(saturate(1.05 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), i.normal.xyz)), 0.4) : 1.0;
           float3 sunColor = float3(1.5625,1.5625,1.5625) * _SunColor.xyz;
@@ -479,7 +481,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float3 sunColorIntensity = float3(0.07, 0.07, 0.07) * _SunColor * (intensity * 1.5 + 1) * intensity;
           float3 sunSpecular = sunColor.xyz * clamp_NdotL * specularStrength;
       
-          float3 finalLight = lerp(1, specularStrength, metallicFactor) * fadeOut * sunColor.xyz * (F * D * G + (0.1 / UNITY_PI)) * clamp_NdotL;
+          float3 finalLight = lerp(1, specularStrength, metallicFactor) * fadeOut * sunColor.xyz * (specularTerm + (0.1 / UNITY_PI)) * clamp_NdotL;
           finalLight = finalLight.xyz * lerp(metallicFactor, 1, specularStrength * 0.2);
       
           finalLight = float3(5,5,5) * lerp(float3(1,1,1), _SunColor, float3(0.3,0.3,0.3)) * finalLight.xyz;

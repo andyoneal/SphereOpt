@@ -28,6 +28,8 @@ float4 _LayerRotations[11 * 3];
 float4x4 _UNITY_MATRIX_VP;
 float _FOV;
 float _Scale;
+int _Global_DS_RenderPlace;
+int _Global_DS_GameMaskL;
 
 StructuredBuffer<Segment> _InstBuffer;
 AppendStructuredBuffer<uint> _LOD0_ID_Buffer;
@@ -148,9 +150,16 @@ inline void CSMain (
     }
 
     */
+    
+    float renderPlace = asuint(_Global_DS_RenderPlace);
+    float progress = _InstBuffer[tID].progress0 + _InstBuffer[tID].progress1;
+    bool noProgress = renderPlace < 1.5 && progress < 0.01;
+    
+    int layerMask = 1 << layer;
+    bool showLayerInGame = renderPlace > 1.5 || (layerMask & asint(_Global_DS_GameMaskL)) > 0;
 
     //if (layer > 0 && (!IsCameraOutsideObjBounds(_CamPosition, minPos, maxPos) || isInFrustum > 0))
-    if (layer > 0 && isInFrustum > 0)
+    if (layer > 0 && isInFrustum > 0 && !noProgress && showLayerInGame)
     {
         if (minDistanceToCamera > LOD1_RANGE * scale) {
             _LOD2_ID_Buffer.Append(tID);
