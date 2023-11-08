@@ -46,6 +46,10 @@ inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float
     return distObjToPlayer < 0.001 ? daylightDimFactor * lightColor : computedLight;
 }
 
+inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
+    return calculateLightFromHeadlamp(headlampPos, upDir, lightDir, worldNormal, 1.0);
+}
+
 inline float distributionGGX(float roughness, float nDotH) {
     float a = roughness; //NDF formula says `a` should be roughness^2
         //"We also adopted Disney’s reparameterization of α = Roughness2."
