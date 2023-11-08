@@ -2,21 +2,21 @@
 
 struct GPUOBJECT
 {
-  uint objId;
-  float3 pos;
-  float4 rot;
+    uint objId;
+    float3 pos;
+    float4 rot;
 };
 
 struct AnimData
 {
-  float time;
-  float prepare_length;
-  float working_length;
-  uint state;
-  float power;
+    float time;
+    float prepare_length;
+    float working_length;
+    uint state;
+    float power;
 };
 
-inline float3 rotate_vector_fast(float3 v, float4 r){ 
+inline float3 rotate_vector_fast(float3 v, float4 r){
     return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
 }
 
@@ -25,10 +25,10 @@ inline float SchlickFresnel_Approx(float F0, float vDotH)
     return F0 + (1 - F0) * exp2((-5.55473 * vDotH - 6.98316) * vDotH);
 }
 
-inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
+inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal, float brightness) {
     float isHeadlampOn = headlampPos.w >= 0.5 ? 1.0 : 0.0;
     if (headlampPos.w < 0.5) return float3(0, 0, 0);
-    
+
     float distanceFromHeadlamp = length(headlampPos) - 5.0;
     float headlampVisibility = saturate(distanceFromHeadlamp);
     float daylightDimFactor = saturate(dot(-upDir, lightDir) * 5.0);
@@ -38,7 +38,7 @@ inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float
     directionToPlayer /= distObjToPlayer;
 
     float falloff = pow(max((20.0 - distObjToPlayer) * 0.05, 0), 2);
-    float3 lightColor = float3(1.3, 1.1, 0.6);
+    float3 lightColor = float3(1.3, 1.1, 0.6) * brightness;
 
     float lightIntensity = headlampVisibility * daylightDimFactor * falloff * saturate(dot(directionToPlayer, worldNormal));
     float3 computedLight = lightIntensity * lightColor;
@@ -66,14 +66,16 @@ inline float geometrySchlickGGX(float roughness, float nDotV, float nDotL) {
 }
 
 inline float GGX(float roughness, float metallic, float nDotH, float nDotV, float nDotL, float vDotH) {
-    
-    float D = distributionGGX(roughness, nDotH);   
+
+    float D = distributionGGX(roughness, nDotH);
     float G = geometrySchlickGGX(roughness, nDotV, nDotL); //r1.x
     float F = SchlickFresnel_Approx(metallic, vDotH);
-    
+
     return (D * F * G) / 4.0;
     //should be (4.0 * nDotV * nDotL)
 }
+
+#if defined(_ENABLE_VFINST)
 
 int _VertexSize;
 uint _VertexCount;
@@ -93,7 +95,7 @@ inline void animateWithVerta(uint vertexID, float time, float prepare_length, fl
       int offset = vertexID * _VertexSize; //r1.x
       uint frameIdx = mad(frameStride, prepareTimeSec, offset); //r3.y
       uint nextFrameIdx = mad(frameStride, prepareTimeSec + 1, offset); //r0.z
-      
+
       if (_VertexSize == 3) {
         pos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
         pos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
@@ -123,6 +125,8 @@ inline void animateWithVerta(uint vertexID, float time, float prepare_length, fl
     }
 }
 
+#endif
+
 inline float3 calculateBinormal(float4 tangent, float3 normal ) {
     float sign = tangent.w * unity_WorldTransformParams.w;
     float3 binormal = cross(normal.xyz, tangent.xyz) * sign;
@@ -138,18 +142,44 @@ inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 u
     float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
     bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
     float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
-    
+
     float3 worldReflect = reflect(-viewDir, worldNormal);
     float3 reflectDir;
     reflectDir.x = dot(worldReflect.zxy, -xaxis);
     reflectDir.y = dot(worldReflect, upDir);
     reflectDir.z = dot(worldReflect, -zaxis);
-    
+
     float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4);
     float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir, reflectLOD);
-    
+
     float scaled_metallicLow = metallicLow * 0.7 + 0.3;
     reflectivity = scaled_metallicLow * (1.0 - perceptualRoughness);
-    
+
     return g_PGI * reflectivity;
+}
+
+inline float3 sunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
+    float3 sunLightColor = lerp(sunlightColor, float3(1,1,1), lightColorScreen);
+
+    float3 sunsetColor = float3(1,1,1);
+    if (upDotL <= 1) {
+        sunsetColor0 = lerp(sunsetColor0, float3(1,1,1), lightColorScreen);
+        sunsetColor1 = lerp(sunsetColor1, float3(1,1,1), lightColorScreen) * float3(1.25,1.25,1.25);
+        sunsetColor2 = lerp(sunsetColor2, float3(1,1,1), lightColorScreen) * float3(1.5, 1.5, 1.5);
+
+        float3 blendDawn     = lerp(float3(0,0,0), sunsetColor2,  saturate( 5 * (upDotL + 0.3)));
+        float3 blendSunrise  = lerp(sunsetColor2,  sunsetColor1,  saturate( 5 * (upDotL + 0.1)));
+        float3 blendMorning  = lerp(sunsetColor1,  sunsetColor0,  saturate(10 * (upDotL - 0.1)));
+        float3 blendDay      = lerp(sunsetColor0,  float3(1,1,1), saturate( 5 * (upDotL - 0.2)));
+
+        sunsetColor = upDotL > -0.1 ? sunsetBlendSunrise : sunsetBlendDawn;
+        sunsetColor = upDotL >  0.1 ? sunsetBlendMorning : sunsetColor.xyz;
+        sunsetColor = upDotL >  0.2 ? sunsetBlendDay     : sunsetColor.xyz;
+    }
+
+    return sunsetColor.xyz * sunLightColor.xyz;
+}
+
+inline float3 sunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
+    return sunlightColor(sunlightColor, upDotL, sunsetColor0, sunsetColor1, sunsetColor2, float3(0,0,0));
 }
