@@ -129,14 +129,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float scaled_distViewToPos = (10000.0 * log(distViewToPos) - 82103.4) / distViewToPos;
         rayViewToPos.xyz = distViewToPos > 10000 ? rayViewToPos.xyz * scaled_distViewToPos : rayViewToPos.xyz;
         float3 scaled_worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos.xyz;
-        
-        // float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
-        // float distSqrViewToPos = dot(rayViewToPos, rayViewToPos);
-        // if(distSqrViewToPos > (10000.0 * 10000.0)) {
-        //   float scaled_distViewToPos = (10000.0 * log(distSqrViewToPos) - 82103.4) / sqrt(distSqrViewToPos);
-        //   rayViewToPos.xyz = rayViewToPos.xyz * scaled_distViewToPos;
-        //   worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos;
-        // }
 
         float4 clipPos = UnityWorldToClipPos(scaled_worldPos.xyz);
 
@@ -213,7 +205,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
             }
             isPlanned = 1;
           }
-          #endif
+          #endif //RP_DYSONEDITOR
           
           uint color = _InstBuffer[instIndex].color;
           float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
@@ -222,6 +214,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
           float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
           float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
+          
           #if defined(RP_DYSONEDITOR) || defined(RP_STARMAP)
           float emissionBoost = 9.0;
           #else
@@ -264,7 +257,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           emissionColor = state > 1.5 ? dysonEditorSelectedColor : emissionColor; //state == 2 (selected)
           emissionColor = state > 2.5 ? dysonEditorHoverWhileSelectedColor : emissionColor; //state == 3 (hover select while selected)
           emissionColor = state > 3.5 ? dysonEditorHoverDeleteColor : emissionColor; //state == 4 (hover delete)
-          #endif
+          #endif //RP_UNIVERSE || RP_STARMAP
           
           #if defined(RP_UNIVERSE) || defined(RP_STARMAP)
           float3 worldPos;
@@ -283,10 +276,9 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float starLightStrength = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
           
           float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
-          //float3 lightDir = normalize(-i.lightray_layer.xyz);
           #else
           float starLightStrength = length(i.lightray_layer.xyz);
-          #endif
+          #endif //RP_UNIVERSE || RP_STARMAP
           
           #if defined(RP_UNIVERSE)
           float3 viewFromSunDir = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz);
@@ -294,7 +286,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float innerFalloff = pow(saturate(1.02 + sideInView), 0.4); // 1 until view side on, then falloff as we view the bottom of frame until it moves behind the star. minimum .2
           #else
           float innerFalloff = 1;
-          #endif
+          #endif //RP_UNIVERSE
           
           float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0, -1)));
           float3 tangentNormal = normalize(unpackedNormal);
@@ -306,9 +298,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           worldNormal.xyz = normalize(worldNormal.xyz);
           
           float nDotL = dot(worldNormal.xyz, lightDir.xyz);
-          
           float3 halfDir = normalize(viewDir + lightDir);
-          
           float ambientLightFalloff = saturate(pow(nDotL * 0.5 + 0.6, 3.0)); //expo: -1=0, 0=0.2, 0.8=1
           
           #if defined(RP_DYSONEDITOR)
@@ -329,21 +319,17 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           float scaledMetallic = 0.5 + metallic;
           float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
           
-          //float starLightStrength = length(i.lightray_layer.xyz);
-          
           float3 ambientLightStrength = lerp(1.0, starLightStrength, ambientLightFalloff);
           float3 ambientLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * ambientLightStrength * ambientLightFalloff;
           float3 ambientColor = ambientLight.xyz * albedo.xyz;
           
-          float3 sunColor = _SunColor.xyz * starLightStrength;
-          sunColor.xyz = float3(1.25, 1.25, 1.25) * sunColor.xyz;
+          float3 sunColor = float3(1.25, 1.25, 1.25) * _SunColor.xyz * starLightStrength;
           float3 highlightColor = sunColor * clamped_nDotL * albedo.xyz;
           
           float3 specularColor = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedo.xyz, metallic);
           specularColor = specularColor.xyz * sunColor;
           float INV_TEN_PI = 0.0318309888;
           specularColor.xyz = specularColor.xyz * clamped_nDotL * (specularTerm + INV_TEN_PI);
-          
           float3 specColorMod = 0.2 * albedo.xyz * (1.0 - metallic) + metallic;
           specularColor = specularColor * specColorMod.xyz;
           
@@ -356,18 +342,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           finalColor.xyz = finalColorLuminance > 1 ? (finalColor.xyz / finalColorLuminance) * (log(log(finalColorLuminance) + 1) + 1) : finalColor.xyz;
           
           finalColor.xyz = finalColor.xyz + emissionColor;
-          
-          // #if defined(RP_UNIVERSE)
-          // finalColor += float3(1,0,0);
-          // #endif
-          // 
-          // #if defined(RP_STARMAP)
-          // finalColor += float3(0,1,0);
-          // #endif
-          // 
-          // #if defined(RP_DYSONEDITOR)
-          // finalColor += float3(0,0,1);
-          // #endif
           
           o.sv_target.xyz = finalColor;
           o.sv_target.w = 1;

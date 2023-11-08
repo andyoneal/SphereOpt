@@ -79,8 +79,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       int _Global_DS_PaintingLayerId;
       int _LayerId;
       int _Global_DS_PaintingGridMode;
-      //float _AlbedoMultiplier;
-      //float _NormalMultiplier;
       float _EmissionMultiplier;
       int _Global_IsMenuDemo;
       int _Global_DS_RenderPlace;
@@ -185,7 +183,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float vertFillOrder = _HexBuffer[instanceID].vertFillOrder;
           uint progressBaseIndex = _ShellBuffer[shellIndex].progressBaseIndex;
           float polygonIndex = _ShellBuffer[shellIndex].polygonIndex;
-          float polyCount = _ShellBuffer[shellIndex].polyCount;
+          //float polyCount = _ShellBuffer[shellIndex].polyCount;
           float state = _ShellBuffer[shellIndex].state;
           uint hexProgressIndex = progressBaseIndex + nodeIndex;
           float nodeProgress = _HexProgressBuffer[hexProgressIndex].progress;
@@ -232,21 +230,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float state = i.pidx_state_pct.y;
       
           /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
-          //int polyCount = (int)(i.pidx_state_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
-      
-          //int closestPolygon = (int)(i.pidx_state_pct_cnt.y + 0.5);
-          //int polygonBaseIndex = (int)(i.pidx_state_pct_cnt.x + 0.5);
           int polyVertIndex = (int)(i.pidx_state_pct.x + 0.5);
-      
-          //int prevIndexOffset = closestPolygon == 0 ? polyCount - 1 : closestPolygon - 1;
-          //int nextIndexOffset = fmod(closestPolygon + 1, polyCount);
-          //int nextnextIndexOffset = fmod(closestPolygon + 2, polyCount);
-      
-          //int prevIndex = polygonBaseIndex + prevIndexOffset;
-          //int nextIndex = polygonBaseIndex + nextIndexOffset;
-          //int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
-      
-          //int clockwise = 1;
           
           float3 thisLinePos = _PolygonBuffer[polyVertIndex].pos;
           uint prevIndex = _PolygonBuffer[polyVertIndex].prevIndex;
@@ -264,10 +248,8 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           
           float3 thisLineDir = nextLinePos - thisLinePos;
           float3 prevLineToPoint = i.objectPos.xyz - prevLinePos;
-          
           float3 nextLineDir = nextNextLinePos - nextLinePos;
           float3 nextLineToPoint = i.objectPos.xyz - nextLinePos;
-      
           float3 nextnextLineToPoint = i.objectPos.xyz - nextNextLinePos;
       
           float prevLineIsConcave = dot(thisLineDir, prevLineNormal);
@@ -283,13 +265,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float thisLineInside = dot(nextLineToPoint, thisLineNormal);
           float nextLineInside = dot(nextnextLineToPoint, nextLineNormal);
           // inside if >0, outside if <0
-      
-          // flip sign if counterclockwise (_Clockwise = -1)
-          //prevLineIsConvex *= clockwise;
-          //nextLineIsConvex *= clockwise;
-          //prevLineInside *= clockwise;
-          //thisLineInside *= clockwise;
-          //nextLineInside *= clockwise;
       
           float insideBounds = -1;
           if (nextLineIsConvex > 0 && prevLineIsConvex > 0) {
@@ -311,8 +286,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           }
       
           if (insideBounds < 0) discard;
-      
-          //if (insideBounds < 0) discard;
           /* end shell/frame bounds check */
       
           
@@ -324,6 +297,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float gridFalloff = 0.99 - saturate((distancePosToCamera / _GridSize) / 15.0 - 0.2) * 0.03;
       
           float2 uv = i.uv_axialCoords.xy;
+          
           float2 adjustPoint = uv.yx * gridFalloff + cubeCoords.xy;
           adjustPoint.xy = adjustPoint.yx * float2(2,2) - adjustPoint.xy;
           float adjustPoint_z = -adjustPoint.x - adjustPoint.y;
@@ -335,13 +309,14 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           adjustPoint.xy = adjustPoint_z < adjustPoint.xy ? adjustPoint.yx < adjustPoint.xy : 0;
       
           float alternatePointY = adjustPoint.y ? roundedPointDiff.y : roundedAdjustPoint.y;
-          float2 correctedCoords = roundedAdjustPoint.x + roundedAdjustPoint.y + roundedAdjustPoint_z != 0.000000 ? (adjustPoint.xx ? float2(roundedPointDiff.x, roundedAdjustPoint.y) : float2(roundedAdjustPoint.x, alternatePointY)) : roundedAdjustPoint.xy;
+          float2 correctedCoords = roundedAdjustPoint.x + roundedAdjustPoint.y + roundedAdjustPoint_z != 0.0 ? (adjustPoint.xx ? float2(roundedPointDiff.x, roundedAdjustPoint.y) : float2(roundedAdjustPoint.x, alternatePointY)) : roundedAdjustPoint.xy;
       
-          float2 randomSampleCoords = float2(0.001953125,0.001953125) * correctedCoords.xy;
+          float2 randomSampleCoords = correctedCoords.xy / 512.0;
           float random_num = tex2Dlod(_NoiseTex, float4(randomSampleCoords.xy, 0, 0)).x;
           
           float isPlanned = 0;
-          if (i.pidx_state_pct.z - random_num * 0.999 < 0.00005) {
+          float progress = i.pidx_state_pct.z;
+          if (i.pidx_state_pct.z - (random_num * 0.999) < 0.00005) {
             UNITY_BRANCH
             if (renderPlace > 1.5) {
               uint2 pixelPos = screenPos.xy;
@@ -357,44 +332,52 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           scaledUV.xy = scaledUV.xy + axialCoords.xx / 3.0 + float2(axialCoords.x - axialCoords.y, axialCoords.y) / 3.0;
       
           float lodBias = min(4, max(0, log(0.0001 * distancePosToCamera)));
-         
-          float3 triPosNew = 1.0 - abs(frac(0.5 * (float3(0.6666666, 0.0, 1.6666666) + scaledUV.xyx)) * 2.0 - 1.0);
-      
-          float2 newPosOne;
-          newPosOne.x = ((triPosNew.x + triPosNew.y) / sqrt(2)) / sqrt(3);
-          newPosOne.y =  (triPosNew.y - triPosNew.x) / sqrt(2);
-      
-          float2 newPosTwo;
-          newPosTwo.x = ((triPosNew.z + triPosNew.y) / sqrt(2)) / sqrt(3);
-          newPosTwo.y =  (triPosNew.y - triPosNew.z) / sqrt(2);
-      
-          float emissionAnim = saturate(30.0 * (0.05 - abs(length(newPosOne.xy) - frac(2.9 * _Time.x)))) * min(1, 5 * (1 - frac(2.9 * _Time.x)))
-               + saturate(30.0 * (0.05 - abs(length(newPosTwo.xy) - frac(_Time.x * 3.7 + 0.5)))) * min(1, 5 * (1 - frac(_Time.x * 3.7 + 0.5)));
-          
           
           float3 emissionTex_A = tex2Dbias(_EmissionTex, float4(uv.xy, 0, lodBias)).xyz;
           float3 emissionTex_B = tex2Dbias(_EmissionTex, float4(float2(1,1) - uv.yx, 0, lodBias)).xyz;
           float3 emissionTex = lerp(emissionTex_A.xyz, emissionTex_B.xyz, sin(_Time.y + _Time.y) * 0.5 + 0.5);
           float3 emissionTexTwo = tex2Dbias(_EmissionTex2, float4(scaledUV.xy, 0, lodBias)).xyz;
-          //bool viewingSunFacingSide = dot(i.normal.xyz, viewDir.xyz) < 0;
-          emissionAnim = viewingOutwardFacingSide ? 0 : saturate((emissionTexTwo.y * 2 + emissionTex.y) * emissionAnim);
-      
+          
           float colorControlTex_A = tex2Dbias(_ColorControlTex, float4(uv.xy, 0, lodBias)).x;
           float colorControlTex_B = tex2Dbias(_ColorControlTex, float4(float2(1,1) - uv.yx, 0, lodBias)).x;
           float colorControlTex = lerp(colorControlTex_A, colorControlTex_B, sin(_Time.y + _Time.y) * 0.5 + 0.5);
           float colorControlTexTwo = tex2Dbias(_ColorControlTex2, float4(scaledUV.xy, 0, lodBias)).x;
           float colorControl = saturate(colorControlTex + colorControlTexTwo);
           
-          float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier);
-          float3 emissionOutwardFacing = lerp(emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz, colorOutwardFacing, i.color.w);
-          float3 dysonEmission = viewingOutwardFacingSide ? float3(1,1,1) : _DysonEmission.xyz;
-          float3 emissionSunFacing = float3(3,3,3) * (emissionTexTwo.x + emissionTex.x) * dysonEmission.xyz;
-          float3 emission = viewingOutwardFacingSide ? emissionOutwardFacing.xyz : emissionSunFacing.xyz;
-      
-          emission = _EmissionMultiplier * lerp(emission.xyz, dysonEmission.xyz, emissionAnim);
+          float emissionAnim = 1.0;
+          float3 emission;
+          UNITY_BRANCH
+          if (!viewingOutwardFacingSide) {
+            float3 triPosNew = 1.0 - abs(frac(0.5 * (float3(0.6666666, 0.0, 1.6666666) + scaledUV.xyx)) * 2.0 - 1.0);
+            
+            float2 newPosOne;
+            newPosOne.x = ((triPosNew.x + triPosNew.y) / sqrt(2)) / sqrt(3);
+            newPosOne.y =  (triPosNew.y - triPosNew.x) / sqrt(2);
+            
+            float2 newPosTwo;
+            newPosTwo.x = ((triPosNew.z + triPosNew.y) / sqrt(2)) / sqrt(3);
+            newPosTwo.y =  (triPosNew.y - triPosNew.z) / sqrt(2);
+            
+            emissionAnim = saturate(30.0 * (0.05 - abs(length(newPosOne.xy) - frac(2.9 * _Time.x)))) * min(1, 5 * (1 - frac(2.9 * _Time.x)))
+             + saturate(30.0 * (0.05 - abs(length(newPosTwo.xy) - frac(_Time.x * 3.7 + 0.5)))) * min(1, 5 * (1 - frac(_Time.x * 3.7 + 0.5)));
+             
+            emissionAnim = saturate((emissionTexTwo.y * 2 + emissionTex.y) * emissionAnim);
+             
+            emission = float3(3,3,3) * (emissionTexTwo.x + emissionTex.x);
+            emission = _EmissionMultiplier * lerp(emission.xyz, _DysonEmission.xyz, emissionAnim);
+          } else {
+            UNITY_BRANCH
+            if (i.color.w > 0.1) {
+              float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier);
+              float3 emissionOutwardFacing = lerp(emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz, colorOutwardFacing, i.color.w);
+              emission = _EmissionMultiplier * emissionOutwardFacing.xyz;
+            } else {
+              float3 emissionOutwardFacing = emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz;
+              emission = _EmissionMultiplier * emissionOutwardFacing.xyz;
+            }
+          }
           
           float scaleMetallic;
-          UNITY_BRANCH
           if (asuint(_Global_IsMenuDemo) > 0.5) {
             scaleMetallic = saturate(pow(0.25 * log(distancePosToCamera + 1) - 1.5, 3.0)) * 0.1;
           } else {
@@ -409,15 +392,16 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       
           float4 albedoTex = tex2Dbias(_MainTex, float4(uv.xy, 0, lodBias)).xyzw;
           float3 albedo = albedoTex.xyz * lerp(float3(1,1,1), albedoTex.xyz, saturate(1.25 * (albedoTex.w - 0.1)));
-          float specularStrength = dot(albedo, float3(0.3, 0.6, 0.1));
+          float albedoLuminance = dot(albedo, float3(0.3, 0.6, 0.1));
           float2 msTex = tex2D(_MSTex, uv.xy).xw;
           
           float metallicFactor, fadeOut, roughness, finalAlpha;
           float3 finalColor;
+          UNITY_BRANCH
           if(renderPlace > 1.5) {
             float3 shellColor = i.color.w > 0.5 ? i.color.xyz : (asint(_Global_DS_PaintingLayerId) == asint(_LayerId) ? float3(0, 0.3, 0.65) : float3(0, 0.8, 0.6));
             float3 shellEmissionColor = lerp(emission.xyz * 2.2, shellColor, 0.8 * isPlanned);
-            specularStrength       = state > 0.5 ? 0   : 0.8 * specularStrength * (1.0 - isPlanned);
+            albedoLuminance       = state > 0.5 ? 0    : 0.8 * albedoLuminance  * (1.0 - isPlanned);
             fadeOut                = state > 0.5 ? 0   : 0.03                   * (1.0 - isPlanned);
             float metallic         = state > 0.5 ? 0   : msTex.x                * (1.0 - scaleMetallic);
             float smoothness       = state > 0.5 ? 0.5 : min(0.8, msTex.y);
@@ -436,7 +420,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           }
           else {
             float multiplyEmission = renderPlace > 0.5 ? 1.8  : 2.5;
-            specularStrength = 0.8 * specularStrength;
+            albedoLuminance = 0.8 * albedoLuminance;
             fadeOut = 0.03;
             finalColor.xyz = emission.xyz * multiplyEmission;
             finalAlpha = _EmissionMultiplier * colorControl;
@@ -462,16 +446,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float clamp_NdotL = max(0, NdotL);
           float clamp_NdotH = max(0, NdotH);
           float clamp_VdotH = max(0, VdotH);
-      
-      //     float D = 0.25 * pow(rcp(clamp_NdotH * clamp_NdotH * (roughnessSqr - 1) + 1),2) * roughnessSqr;
-      // 
-      //     float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, NdotV);
-      //     float gl = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, clamp_NdotL);
-      //     float G = rcp(gv * gl);
-      // 
-      //     float fk = exp2((clamp_VdotH * -5.55472994 - 6.98316002) * clamp_VdotH);
-      //     float F = lerp(0.5 + metallicFactor, 1.0, fk);
-          
           float scaledMetallic = 0.5 + metallicFactor;
           float specularTerm = GGX(roughness, scaledMetallic, clamp_NdotH, NdotV, clamp_NdotL, clamp_NdotH);
       
@@ -479,13 +453,13 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float3 sunColor = float3(1.5625,1.5625,1.5625) * _SunColor.xyz;
           float intensity = saturate(pow(NdotL * 0.6 + 1, 3));
           float3 sunColorIntensity = float3(0.07, 0.07, 0.07) * _SunColor * (intensity * 1.5 + 1) * intensity;
-          float3 sunSpecular = sunColor.xyz * clamp_NdotL * specularStrength;
+          float3 sunSpecular = sunColor.xyz * clamp_NdotL * albedoLuminance;
       
-          float3 finalLight = lerp(1, specularStrength, metallicFactor) * fadeOut * sunColor.xyz * (specularTerm + (0.1 / UNITY_PI)) * clamp_NdotL;
-          finalLight = finalLight.xyz * lerp(metallicFactor, 1, specularStrength * 0.2);
+          float3 finalLight = lerp(1, albedoLuminance, metallicFactor) * fadeOut * sunColor.xyz * (specularTerm + (0.1 / UNITY_PI)) * clamp_NdotL;
+          finalLight = finalLight.xyz * lerp(metallicFactor, 1, albedoLuminance * 0.2);
       
           finalLight = float3(5,5,5) * lerp(float3(1,1,1), _SunColor, float3(0.3,0.3,0.3)) * finalLight.xyz;
-          finalLight = (sunColorIntensity.xyz * specularStrength * (1 - metallicFactor * 0.6) + sunSpecular.xyz * pow(1 - metallicFactor, 0.6) + finalLight.xyz) * sunStrength;
+          finalLight = (sunColorIntensity.xyz * albedoLuminance * (1 - metallicFactor * 0.6) + sunSpecular.xyz * pow(1 - metallicFactor, 0.6) + finalLight.xyz) * sunStrength;
       
           float luminance = dot(finalLight, float3(0.3, 0.6, 0.1));
           float3 normalizedLight = finalLight / luminance;
