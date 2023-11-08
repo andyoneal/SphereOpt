@@ -46,6 +46,10 @@ inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float
     return distObjToPlayer < 0.001 ? daylightDimFactor * lightColor : computedLight;
 }
 
+inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
+    return calculateLightFromHeadlamp(headlampPos, upDir, lightDir, worldNormal, 1.0);
+}
+
 inline float distributionGGX(float roughness, float nDotH) {
     float a = roughness; //NDF formula says `a` should be roughness^2
         //"We also adopted Disney’s reparameterization of α = Roughness2."
@@ -74,6 +78,58 @@ inline float GGX(float roughness, float metallic, float nDotH, float nDotV, floa
     return (D * F * G) / 4.0;
     //should be (4.0 * nDotV * nDotL)
 }
+
+#if defined(_ENABLE_VFINST)
+
+int _VertexSize;
+uint _VertexCount;
+uint _FrameCount;
+StructuredBuffer<float> _VertaBuffer;
+
+inline void animateWithVerta(uint vertexID, float time, float prepare_length, float working_length, inout float3 pos, inout float3 normal, inout float3 tangent) {
+    float frameCount = prepare_length > 0 ? _FrameCount - 1 : _FrameCount; //r0.w
+    bool skipVerta = frameCount <= 0 || (_VertexSize != 9 && _VertexSize != 6 && _VertexSize != 3) || _VertexCount <= 0 || working_length <= 0; //r0.x
+    if (!skipVerta) {
+      float prepareTime = time >= prepare_length && prepare_length > 0 ? 1.0 : 0; //r0.x
+      prepareTime = frac(time / (prepare_length + working_length)) * (frameCount - 1) + prepareTime;
+      prepareTime = frameCount - 1 <= 0 ? 0 : prepareTime; //r0.x
+      uint prepareTimeSec = (uint)prepareTime; //r0.z
+      float prepareTimeFrac = frac(prepareTime); //r0.x
+      int frameStride = _VertexSize * _VertexCount; //r0.w
+      int offset = vertexID * _VertexSize; //r1.x
+      uint frameIdx = mad(frameStride, prepareTimeSec, offset); //r3.y
+      uint nextFrameIdx = mad(frameStride, prepareTimeSec + 1, offset); //r0.z
+
+      if (_VertexSize == 3) {
+        pos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
+        pos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
+        pos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
+      } else {
+        if (_VertexSize == 6) {
+          pos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
+          pos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
+          pos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
+          normal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
+          normal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
+          normal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
+        } else {
+          if (_VertexSize == 9) {
+            pos.x = lerp(_VertaBuffer[frameIdx], _VertaBuffer[nextFrameIdx], prepareTimeFrac);
+            pos.y = lerp(_VertaBuffer[frameIdx + 1], _VertaBuffer[nextFrameIdx + 1], prepareTimeFrac);
+            pos.z = lerp(_VertaBuffer[frameIdx + 2], _VertaBuffer[nextFrameIdx + 2], prepareTimeFrac);
+            normal.x = lerp(_VertaBuffer[frameIdx + 3], _VertaBuffer[nextFrameIdx + 3], prepareTimeFrac);
+            normal.y = lerp(_VertaBuffer[frameIdx + 4], _VertaBuffer[nextFrameIdx + 4], prepareTimeFrac);
+            normal.z = lerp(_VertaBuffer[frameIdx + 5], _VertaBuffer[nextFrameIdx + 5], prepareTimeFrac);
+            tangent.x = lerp(_VertaBuffer[frameIdx + 6], _VertaBuffer[nextFrameIdx + 6], prepareTimeFrac);
+            tangent.y = lerp(_VertaBuffer[frameIdx + 7], _VertaBuffer[nextFrameIdx + 7], prepareTimeFrac);
+            tangent.z = lerp(_VertaBuffer[frameIdx + 8], _VertaBuffer[nextFrameIdx + 8], prepareTimeFrac);
+          }
+        }
+      }
+    }
+}
+
+#endif
 
 inline float3 calculateBinormal(float4 tangent, float3 normal ) {
     float sign = tangent.w * unity_WorldTransformParams.w;
