@@ -162,7 +162,7 @@ inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 u
     return g_PGI * reflectivity;
 }
 
-inline float3 sunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
+inline float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
     float3 sunLightColor = lerp(sunlightColor, float3(1,1,1), lightColorScreen);
 
     float3 sunsetColor = float3(1,1,1);
@@ -176,14 +176,14 @@ inline float3 sunlightColor(float3 sunlightColor, float upDotL, float3 sunsetCol
         float3 blendMorning  = lerp(sunsetColor1,  sunsetColor0,  saturate(10 * (upDotL - 0.1)));
         float3 blendDay      = lerp(sunsetColor0,  float3(1,1,1), saturate( 5 * (upDotL - 0.2)));
 
-        sunsetColor = upDotL > -0.1 ? sunsetBlendSunrise : sunsetBlendDawn;
-        sunsetColor = upDotL >  0.1 ? sunsetBlendMorning : sunsetColor.xyz;
-        sunsetColor = upDotL >  0.2 ? sunsetBlendDay     : sunsetColor.xyz;
+        sunsetColor = upDotL > -0.1 ? blendSunrise : blendDawn;
+        sunsetColor = upDotL >  0.1 ? blendMorning : sunsetColor.xyz;
+        sunsetColor = upDotL >  0.2 ? blendDay     : sunsetColor.xyz;
     }
 
     return sunsetColor.xyz * sunLightColor.xyz;
 }
 
-inline float3 sunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
-    return sunlightColor(sunlightColor, upDotL, sunsetColor0, sunsetColor1, sunsetColor2, float3(0,0,0));
+inline float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
+    return calculateSunlightColor(sunlightColor, upDotL, sunsetColor0, sunsetColor1, sunsetColor2, float3(0,0,0));
 }
