@@ -131,10 +131,10 @@ Shader "VF Shaders/Forward/Planet Surface" {
                 float3 worldBitangent = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal.xyz); //r4.xyz
 
                 //TBNW
-                o.tbnw0.x = worldTangent.x; //is tan.x
-                o.tbnw0.y = worldBitangent.x; //bitan.x
-                o.tbnw0.z = worldNormal.x; //normal.x
-                o.tbnw0.w = worldPos2.x; //worldPos.x
+                o.tbnw0.x = worldTangent.x;
+                o.tbnw0.y = worldBitangent.x;
+                o.tbnw0.z = worldNormal.x;
+                o.tbnw0.w = worldPos2.x;
 
                 o.tbnw1.x = worldTangent.y;
                 o.tbnw1.y = worldBitangent.y;
@@ -158,8 +158,6 @@ Shader "VF Shaders/Forward/Planet Surface" {
                 o.color.xyz = v.color.xyz; //color
 
                 o.ambient.xyz = ShadeSH9(float4(worldNormal,1));
-
-                //o.screenPos.xyzw = computeScreenPos(clipPos); //not sure about cb. is it projectionparams.x?
                 TRANSFER_SHADOW(o);
 
                 o.unk_unused.xyzw = float4(0,0,0,0);
@@ -180,7 +178,7 @@ Shader "VF Shaders/Forward/Planet Surface" {
                 //select projection direction with normal
                 float3 projDirSelect = saturate(normalize(abs(i.objectNormal.xyz)) - float3(0.5, 0.5, 0.5)); //r2.xyz
                 projDirSelect.xyz = saturate(normalize(projDirSelect.xyz) - float3(0.5, 0.5, 0.5));
-                projDirSelect /= dot(projDirSelect, 1);; //r2.xyz
+                projDirSelect /= dot(projDirSelect, 1); //r2.xyz
 
                 //linear or smoothstep
                 float blendFactor = lerp(frac(i.bioSelect.x), pow(frac(i.bioSelect.x), 2) * (3.0 - 2.0 * frac(i.bioSelect.x)), _StepBlend); //r1.z
