@@ -33,7 +33,6 @@ namespace SphereOpt
             public int color;
             public uint state;
             public int progressBaseIndex;
-            public int polyCount;
             public int polygonIndex;
             public Vector3 center;
         }
@@ -289,20 +288,19 @@ namespace SphereOpt
             hexBufferIsDirty = true;
             hexProgressBufferIsDirty = true;
 
-            var pbi = shellPool[shellId].polygonIndex;
-            for (int i = 0; i < shellPool[shellId].polyCount; i++)
-            {
-                polygonPool[pbi + i].pos = Vector3.zero;
-                polygonPool[pbi + i].normal = Vector3.zero;
-            }
-            polygonBufferIsDirty = true;
+            // var pbi = shellPool[shellId].polygonIndex;
+            // for (int i = 0; i < shellPool[shellId].polyCount; i++)
+            // {
+            //     polygonPool[pbi + i].pos = Vector3.zero;
+            //     polygonPool[pbi + i].normal = Vector3.zero;
+            // }
+            // polygonBufferIsDirty = true;
 
             //TODO: shouldn't have to do this? leave as is?
             shellPool[shellId].center = Vector3.zero;
             shellPool[shellId].state = 0;
             //shellPool[shellId].clockwise = 0;
             shellPool[shellId].color = 0;
-            shellPool[shellId].polyCount = 0;
             shellPool[shellId].progressBaseIndex = 0;
             shellPool[shellId].polygonIndex = 0;
             shellBufferIsDirty = true;

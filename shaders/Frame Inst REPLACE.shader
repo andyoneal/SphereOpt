@@ -97,8 +97,11 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3 rayToNeighborFrame = v.vertex.z < 0.5 ? compare_pos1.xyz - pos0.xyz : pos1.xyz - compare_pos0.xyz;
         float3 rayEndToEnd = v.vertex.z < 0.5 ? pos0.xyz - compare_pos0.xyz : compare_pos1.xyz - pos1.xyz;
         float3 rayTwoFrames = v.vertex.z < 0.5 ? pos1.xyz - compare_pos0.xyz : compare_pos1.xyz - pos0.xyz;
+        
+        bool framesAreTouching = length(rayToNeighborFrame) < 0.01;
+        bool lowAngle = dot(normalize(pos0topos1), normalize(rayEndToEnd)) > 0.9; //angle between two frames is less than ~8deg
 
-        float3 z_axis = length(rayToNeighborFrame) < 0.01 && dot(normalize(pos0topos1), normalize(rayEndToEnd)) > 0.9 ? rayTwoFrames : pos0topos1.xyz;
+        float3 z_axis = framesAreTouching && lowAngle ? rayTwoFrames : pos0topos1.xyz;
 
         z_axis.xyz = normalize(z_axis.xyz);
         float3 y_axis = normalize(stretchedPos.xyz);

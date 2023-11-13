@@ -57,7 +57,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
         int color;
         uint state; 
         int progressBaseIndex;
-        int polyCount;
         int polygonIndex;
         float3 center;
       };
@@ -110,7 +109,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
           float3 binormal : TEXCOORD4;
           float3 normal : TEXCOORD5;
           float3 pidx_state_pct : TEXCOORD6;
-          //float2 state_clock : TEXCOORD7;
           float4 color : TEXCOORD7;
       };
       
@@ -428,18 +426,17 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
             roughness = pow(1 - 0.97 * min(0.8, msTex.y), 2); //pow(min(1, 1 - min(0.8, msTex.y) * 0.97), 2);
           }
       
-          float4 normalTex = tex2Dbias(_NormalTex, float4(uv.xy, 0, lodBias)).xyzw;
+          float4 normalTex = tex2Dbias(_NormalTex, float4(uv.xy, 0, lodBias)).xyzw; //x is always 1
           float3 unpackedNormal = UnpackNormal(normalTex);
           unpackedNormal.xy = -1.5 * unpackedNormal.xy;
-          float3 worldNormal = normalize(i.normal.xyz * unpackedNormal.z + i.tangent.xyz * unpackedNormal.x + i.binormal.xyz * unpackedNormal.y);
-      
-          float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
-          float NdotV = viewingOutwardFacingSide ? dot(worldNormal.xyz, viewDir.xyz) : -dot(worldNormal.xyz, viewDir.xyz);
+          float3 worldNormal = normalize(i.tangent.xyz * unpackedNormal.x + i.binormal.xyz * unpackedNormal.y + i.normal.xyz * unpackedNormal.z);
           worldNormal.xyz = viewingOutwardFacingSide ? worldNormal.xyz : -worldNormal.xyz;
-      
+          
+          float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
           float3 lightDir = -i.normal.xyz;
           float3 halfDir = normalize(viewDir + lightDir.xyz);
-      
+          
+          float NdotV = dot(worldNormal.xyz, viewDir.xyz);
           float NdotL = dot(worldNormal.xyz, lightDir.xyz);
           float NdotH = dot(worldNormal.xyz, halfDir.xyz);
           float VdotH = dot(viewDir, halfDir.xyz);

@@ -49,7 +49,6 @@ internal static class Patch_DysonShell
             progressBaseIndex = progressBaseIndex,
             state = __instance.state,
             polygonIndex = polygonIndex,
-            polyCount = polygon.Count,
             //clockwise = __instance.clockwise ? 1 : -1,
             center = __instance.center
         };
