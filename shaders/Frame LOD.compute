@@ -36,15 +36,13 @@ AppendStructuredBuffer<uint> _LOD0_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD1_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD2_ID_Buffer;
 
-inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
+inline bool IsVisibleAfterFrustumCulling(float4 clipPos)
 {
-    return (//clipPos.z > clipPos.w 
-            //|| clipPos.x < -clipPos.w 
-            clipPos.x < -clipPos.w
-            || clipPos.x > clipPos.w 
-            || clipPos.y < -clipPos.w 
-            || clipPos.y > clipPos.w) 
-            ? 0 : 1;
+    return (clipPos.x >= -clipPos.w
+         && clipPos.y >= -clipPos.w
+         && clipPos.x <=  clipPos.w
+         && clipPos.y <=  clipPos.w)
+         ? 1 : 0;
 }
 
 inline uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
@@ -95,13 +93,13 @@ inline void CSMain (
     boxCorners0[7] = float4(maxPos0.x, maxPos0.y, maxPos0.z, 1.0);
 
     float4 clipPos = mul(_UNITY_MATRIX_VP, boxCorners0[0]);
-    uint isInFrustum = IsVisibleAfterFrustumCulling(clipPos);
+    bool isInFrustum = IsVisibleAfterFrustumCulling(clipPos);
 
     [unroll]
     for (int i = 1; i < 8; i++)
     {
         clipPos = mul(_UNITY_MATRIX_VP, boxCorners0[i]);
-        isInFrustum = isInFrustum + IsVisibleAfterFrustumCulling(clipPos);
+        isInFrustum = isInFrustum || IsVisibleAfterFrustumCulling(clipPos);
     }
 
     float4 boxCorners1[8];
@@ -118,7 +116,7 @@ inline void CSMain (
     for (int j = 0; j < 8; j++)
     {
         clipPos = mul(_UNITY_MATRIX_VP, boxCorners1[j]);
-        isInFrustum = isInFrustum + IsVisibleAfterFrustumCulling(clipPos);
+        isInFrustum = isInFrustum || IsVisibleAfterFrustumCulling(clipPos);
     }
 
     float scale = _Scale * rcp(tan((_FOV+30) * HALF_DEG2RAD));
@@ -159,7 +157,7 @@ inline void CSMain (
     bool showLayerInGame = renderPlace > 1.5 || (layerMask & asint(_Global_DS_GameMaskL)) > 0;
 
     //if (layer > 0 && (!IsCameraOutsideObjBounds(_CamPosition, minPos, maxPos) || isInFrustum > 0))
-    if (layer > 0 && isInFrustum > 0 && !noProgress && showLayerInGame)
+    if (layer > 0 && isInFrustum && !noProgress && showLayerInGame)
     {
         if (minDistanceToCamera > LOD1_RANGE * scale) {
             _LOD2_ID_Buffer.Append(tID);
