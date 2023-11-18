@@ -16,16 +16,16 @@ struct AnimData
     float power;
 };
 
-inline float3 rotate_vector_fast(float3 v, float4 r){
+float3 rotate_vector_fast(float3 v, float4 r){
     return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
 }
 
-inline float SchlickFresnel_Approx(float F0, float vDotH)
+float SchlickFresnel_Approx(float F0, float vDotH)
 {
     return F0 + (1 - F0) * exp2((-5.55473 * vDotH - 6.98316) * vDotH);
 }
 
-inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal, float brightness) {
+float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal, float brightness) {
     float isHeadlampOn = headlampPos.w >= 0.5 ? 1.0 : 0.0;
     if (headlampPos.w < 0.5) return float3(0, 0, 0);
 
@@ -46,11 +46,11 @@ inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float
     return distObjToPlayer < 0.001 ? daylightDimFactor * lightColor : computedLight;
 }
 
-inline float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
+float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
     return calculateLightFromHeadlamp(headlampPos, upDir, lightDir, worldNormal, 1.0);
 }
 
-inline float distributionGGX(float roughness, float nDotH) {
+float distributionGGX(float roughness, float nDotH) {
     float a = roughness; //NDF formula says `a` should be roughness^2
         //"We also adopted Disney’s reparameterization of α = Roughness2."
         //but a = Roughness here
@@ -59,7 +59,7 @@ inline float distributionGGX(float roughness, float nDotH) {
     //missing (1/PI) *
 }
 
-inline float geometrySchlickGGX(float roughness, float nDotV, float nDotL) {
+float geometrySchlickGGX(float roughness, float nDotV, float nDotL) {
     float k = pow(roughness * roughness + 1.0, 2) * 0.125; //r2.w does "roughness" mean perceptualroughness^2 or ^4?
         //"We also chose to use Disney’s modification to reduce “hotness” by remapping roughness using (Roughness+1)/2 before squaring."
         //but this is doing (Roughness^2+1)/2 before squaring
@@ -69,7 +69,7 @@ inline float geometrySchlickGGX(float roughness, float nDotV, float nDotL) {
     //missing (nDotL * nDotV) *
 }
 
-inline float GGX(float roughness, float metallic, float nDotH, float nDotV, float nDotL, float vDotH) {
+float GGX(float roughness, float metallic, float nDotH, float nDotV, float nDotL, float vDotH) {
 
     float D = distributionGGX(roughness, nDotH);
     float G = geometrySchlickGGX(roughness, nDotV, nDotL); //r1.x
@@ -86,7 +86,7 @@ uint _VertexCount;
 uint _FrameCount;
 StructuredBuffer<float> _VertaBuffer;
 
-inline void animateWithVerta(uint vertexID, float time, float prepare_length, float working_length, inout float3 pos, inout float3 normal, inout float3 tangent) {
+void animateWithVerta(uint vertexID, float time, float prepare_length, float working_length, inout float3 pos, inout float3 normal, inout float3 tangent) {
     float frameCount = prepare_length > 0 ? _FrameCount - 1 : _FrameCount; //r0.w
     bool skipVerta = frameCount <= 0 || (_VertexSize != 9 && _VertexSize != 6 && _VertexSize != 3) || _VertexCount <= 0 || working_length <= 0; //r0.x
     if (!skipVerta) {
@@ -131,7 +131,7 @@ inline void animateWithVerta(uint vertexID, float time, float prepare_length, fl
 
 #endif
 
-inline float3 calculateBinormal(float4 tangent, float3 normal ) {
+float3 calculateBinormal(float4 tangent, float3 normal ) {
     float sign = tangent.w * unity_WorldTransformParams.w;
     float3 binormal = cross(normal.xyz, tangent.xyz) * sign;
     return binormal;
@@ -140,7 +140,7 @@ inline float3 calculateBinormal(float4 tangent, float3 normal ) {
 UNITY_DECLARE_TEXCUBE(_Global_PGI);
 
 /* What image is reflected in metallic surfaces and how reflective is it? */
-inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
+float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
     float upDirMagSqr = dot(upDir, upDir);
     bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
     float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
@@ -162,7 +162,7 @@ inline float3 reflection(float perceptualRoughness, float3 metallicLow, float3 u
     return g_PGI * reflectivity;
 }
 
-inline float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
+float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
     float3 sunLightColor = lerp(sunlightColor, float3(1,1,1), lightColorScreen);
 
     float3 sunsetColor = float3(1,1,1);
@@ -184,6 +184,6 @@ inline float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 
     return sunsetColor.xyz * sunLightColor.xyz;
 }
 
-inline float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
+float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
     return calculateSunlightColor(sunlightColor, upDotL, sunsetColor0, sunsetColor1, sunsetColor2, float3(0,0,0));
 }

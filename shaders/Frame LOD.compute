@@ -34,7 +34,7 @@ AppendStructuredBuffer<uint> _LOD0_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD1_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD2_ID_Buffer;
 
-inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
+uint IsVisibleAfterFrustumCulling(float4 clipPos)
 {
     return (//clipPos.z > clipPos.w 
             //|| clipPos.x < -clipPos.w 
@@ -45,7 +45,7 @@ inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
             ? 0 : 1;
 }
 
-inline uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
+uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
 {
     float boundsSize = distance(maxPos, minPos);
     return ((distance(pos, maxPos) > boundsSize)
@@ -53,7 +53,7 @@ inline uint IsCameraOutsideObjBounds(float3 pos, float3 minPos, float3 maxPos)
 }
 
 [numthreads(THREAD_GROUP_SIZE_X, THREAD_GROUP_SIZE_Y, THREAD_GROUP_SIZE_Z)]
-inline void CSMain (
+void CSMain (
         in uint3 _dispatchThreadID : SV_DispatchThreadID
     )
 {
