@@ -1,3 +1,18 @@
+struct DroneData {
+    float3 begin;
+    float3 end;
+    int endId;
+    float direction;
+    float maxt;
+    float t;
+    int itemId;
+    int itemCount;
+    int inc;
+    int gene;
+};
+
+sampler2D _NoiseMap;
+
 // u,v are normalized
 float3 vector_slerp(float3 u, float3 v, float t)
 {
@@ -52,7 +67,7 @@ void transform(DroneData obj, out float3 pos, out float3 axisx, out float3 axisy
     u /= lu;
     v /= lv;
     float3 tv = vector_slerp(u, v, st);
-    float alt = lerp(lu, 1v, st) + 8;
+    float alt = lerp(lu, lv, st) + 8;
     float biasCoef = pow((0.5 - abs(st - 0.5)) * 4, 0.4);
     
     alt += biasCoef * 1.3;
