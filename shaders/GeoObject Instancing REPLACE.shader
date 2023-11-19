@@ -140,43 +140,36 @@ Shader "VF Shaders/Forward/GeoObject Instancing" {
             fout frag(v2f i)
             {
                 fout o;
+                
+                float3 worldPos; //r0.yzw
+                worldPos.x = i.TBNW0.w;
+                worldPos.y = i.TBNW1.w;
+                worldPos.z = i.TBNW2.w;
+                
+                float3 rayPosToCam = _WorldSpaceCameraPos - worldPos; //r1.xyz
+                float3 viewDir = normalize(r1.xyz); //r2.xyz
 
-                r0.y = i.TBNW0.w;
-                r0.z = i.TBNW1.w;
-                r0.w = i.TBNW2.w;
-                r1.xyz = _WorldSpaceCameraPos - r0.yzw;
-                r0.x = dot(r1.xyz, r1.xyz);
-                r0.x = rsqrt(r0.x);
-                r2.xyz = r1.xyz * r0.xxx;
-
-                r3.xyzw = _MainTex.Sample(s3_s, i.uv_objId.xy).xyzw;
-                r4.xyz = _NormalTex.Sample(s4_s, i.uv_objId.xy).xyw;
-
-                r4.x = r4.x * r4.z;
-                r4.xy = r4.xy * float2(2,2) + float2(-1,-1);
-                r1.w = dot(r4.xy, r4.xy);
-                r1.w = min(1, r1.w);
-                r1.w = 1 + -r1.w;
-                r5.z = sqrt(r1.w);
-                r4.zw = _MS_Tex.Sample(s5_s, i.uv_objId.xy).xw;
-                r6.xyz = _EmissionTex.Sample(s6_s, i.uv_objId.xy).xyz;
-                r5.xy = _NormalMultiplier * r4.xy;
-                r3.xyz = _AlbedoMultiplier * r3.xyz;
-                r1.w = -0.100000001 + r3.w;
-                r1.w = saturate(1.25 * r1.w);
-                r7.xyz = float3(-1,-1,-1) + _Color.xyz;
-                r7.xyz = r1.www * r7.xyz + float3(1,1,1);
-                r8.xyz = r7.xyz * r3.xyz;
-                r1.w = dot(r5.xyz, r5.xyz);
-                r1.w = rsqrt(r1.w);
-                r5.xyz = r5.xyz * r1.www;
-                r4.xy = saturate(float2(_MetallicMultiplier, _SmoothMultiplier) * r4.zw);
-
+                float4 albedo = tex2D(_MainTex, i.uv_objId.xy); //r3.xyzw
+                albedo.xyz = _AlbedoMultiplier * albedo.xyz;
+                
+                float3 tangentNormal = UnpackNormal(tex2D(_NormalTex, i.uv_objId.xy)); //r5.xyz
+                tangentNormal.xy = _NormalMultiplier * tangentNormal.xy; //r5.xyz
+                tangentNormal = normalize(tangentNormal); //r5.xyz
+                
+                float2 metal_smooth = tex2D(_MS_Tex, i.uv_objId.xy).xw; //r4.zw
+                metal_smooth = saturate(float2(_MetallicMultiplier, _SmoothMultiplier) * metal_smooth); //r4.xy
+                
+                float3 emission = tex2D(_EmissionTex, i.uv_objId.xy).xyz; //r6.xyz
+                
+                r7.xyz = lerp(float3(1,1,1), _Color.xyz, saturate(1.25 * (albedo.w - 0.1)));
+                r8.xyz = r7.xyz * albedo.xyz;
+                
+                //shadow stuff
                 r9.x = cb4[9].z; //unity_MatrixV
                 r9.y = cb4[10].z; //unity_MatrixV
                 r9.z = cb4[11].z; //unity_MatrixV
                 r1.w = dot(r1.xyz, r9.xyz);
-                r9.xyz = -cb3[25].xyz + r0.yzw; //unity_ShadowFadeCenterAndType
+                r9.xyz = -cb3[25].xyz + worldPos; //unity_ShadowFadeCenterAndType
                 r2.w = dot(r9.xyz, r9.xyz);
                 r2.w = sqrt(r2.w);
                 r2.w = r2.w + -r1.w;
@@ -189,7 +182,7 @@ Shader "VF Shaders/Forward/GeoObject Instancing" {
                     r9.xyz = cb5[1].xyz * i.TBNW0.www + r9.xyz;
                     r9.xyz = cb5[3].xyz * i.TBNW2.www + r9.xyz;
                     r9.xyz = cb5[4].xyz + r9.xyz;
-                    r0.yzw = r2.www ? r9.xyz : r0.yzw;
+                    r0.yzw = r2.www ? r9.xyz : worldPos;
                     r0.yzw = -cb5[6].xyz + r0.yzw;
                     r9.yzw = cb5[5].xyz * r0.yzw;
                     r0.y = r9.y * 0.25 + 0.75;
@@ -197,114 +190,120 @@ Shader "VF Shaders/Forward/GeoObject Instancing" {
                     r9.x = max(r0.y, r0.z);
                     r9.xyzw = t6.Sample(s0_s, r9.xzw).xyzw;
                 } else {
-                r9.xyzw = float4(1,1,1,1);
+                    r9.xyzw = float4(1,1,1,1);
                 }
                 r0.y = saturate(dot(r9.xyzw, cb2[46].xyzw)); //unity_OcclusionMaskSelector
                 r0.zw = v7.xy / v7.ww;
                 r0.z = t4.Sample(s1_s, r0.zw).x;
                 r0.y = r0.y + -r0.z;
                 r0.y = r1.w * r0.y + r0.z;
-
-                r9.x = dot(i.TBNW0.xyz, r5.xyz);
-                r9.y = dot(i.TBNW1.xyz, r5.xyz);
-                r9.z = dot(i.TBNW2.xyz, r5.xyz);
-                r0.z = dot(r9.xyz, r9.xyz);
-                r0.z = rsqrt(r0.z);
-                r5.xyz = r9.xyz * r0.zzz;
-                r0.zw = r4.xx * float2(0.850000024,0.850000024) + float2(0.648999989,0.149000004);
-                r1.w = -r4.y * 0.970000029 + 1;
-                r1.xyz = r1.xyz * r0.xxx + _WorldSpaceLightPos0.xyz;
-                r0.x = dot(r1.xyz, r1.xyz);
-                r0.x = rsqrt(r0.x);
-                r1.xyz = r1.xyz * r0.xxx;
-                r0.x = r1.w * r1.w;
-                r2.w = r0.x * r0.x;
-                r3.w = dot(r5.xyz, _WorldSpaceLightPos0.xyz);
-                r4.x = max(0, r3.w);
-                r4.z = dot(r5.xyz, r2.xyz);
-                r4.w = dot(r5.xyz, r1.xyz);
-                r4.zw = max(float2(0,0), r4.zw);
-                r1.x = dot(r2.xyz, r1.xyz);
-                r1.x = max(0, r1.x);
-                r1.y = r3.w * 0.349999994 + 1;
-                r1.z = r1.y * r1.y;
-                r1.y = r1.z * r1.y;
-                r1.z = dot(i.upDir.xyz, _WorldSpaceLightPos0.xyz);
-                r3.w = dot(r5.xyz, v5.xyz);
-                r5.w = dot(i.upDir.xyz, v5.xyz);
-                r6.w = cmp(i.upDir.y < 0.999899983);
-                r5.w = cmp(0.00999999978 < r5.w);
-                r6.w = r5.w ? r6.w : 0;
+                
+                float3 worldNormal;
+                worldNormal.x = dot(i.TBNW0.xyz, tangentNormal.xyz);
+                worldNormal.y = dot(i.TBNW1.xyz, tangentNormal.xyz);
+                worldNormal.z = dot(i.TBNW2.xyz, tangentNormal.xyz);
+                worldNormal = normalize(worldNormal); //r5.xyz
+                
+                r0.z = metal_smooth.x * 0.85 + 0.649;
+                r0.w = metal_smooth.x * 0.85 + 0.149;
+                float perceptualRoughness = 1 - metal_smooth.y * 0.97; //r1.w
+                
+                float3 halfDir = normalize(viewDir + _WorldSpaceLightPos0.xyz); //r1.xyz
+                
+                float roughness = perceptualRoughness * perceptualRoughness; //r0.x
+                float roughnessSqr = roughness * roughness; //r2.w
+                
+                float nDotL = dot(worldNormal, _WorldSpaceLightPos0.xyz); //r3.w
+                float clamped_nDotL = max(0, nDotL); //r4.x
+                float nDotV = dot(worldNormal, viewDir); //r4.z
+                float clamped_nDotV = max(0, nDotV); //r4.z
+                float nDotH = dot(worldNormal, halfDir); //r4.w
+                float clamped_nDotH = max(0, nDotH); //r4.w
+                float vDotH = dot(viewDir, halfDir); //r1.x
+                float clamped_vDotH = max(0, vDotH); //r1.x
+                
+                r1.y = pow(nDotL * 0.35 + 1, 3);
+                float upDotL = dot(i.upDir, _WorldSpaceLightPos0.xyz); //r1.z
+                
+                float nDotUp = dot(worldNormal, i.upDir); //r3.w
+                
+                float magSqrUpDir = dot(i.upDir, i.upDir);
+                //rearranged cross()
                 r9.xyz = float3(0,1,0) * i.upDir.yzx;
-                r9.xyz = i.upDir.xyz * float3(1,0,0) + -r9.xyz;
+                r9.xyz = i.upDir.xyz * float3(1,0,0) - r9.xyz;
+                
                 r7.w = dot(r9.xy, r9.xy);
                 r7.w = rsqrt(r7.w);
                 r9.xyz = r9.xyz * r7.www;
-                r9.xyz = r6.www ? r9.xyz : float3(0,1,0);
-                r6.w = dot(r9.xy, r9.xy);
-                r6.w = cmp(0.00999999978 < r6.w);
-                r5.w = r5.w ? r6.w : 0;
+                
+                r9.xyz = magSqrUpDir > 0.01 && i.upDir.y < 0.9999 ? r9.xyz : float3(0,1,0);
+                
+                r6.w = dot(r9.xy, r9.xy); //magSqr
+                r5.w = magSqrUpDir > 0.01 && r6.w > 0.01 : 0;
+                
+                //rearranged cross()
                 r10.xyz = i.upDir.yzx * r9.xyz;
                 r10.xyz = r9.zxy * i.upDir.zxy + -r10.xyz;
-                r6.w = dot(r10.xyz, r10.xyz);
-                r6.w = rsqrt(r6.w);
-                r10.xyz = r10.xyz * r6.www;
-                r6.w = dot(-r2.xyz, r5.xyz);
-                r6.w = r6.w + r6.w;
-                r2.xyz = r5.xyz * -r6.www + -r2.xyz;
+                r10.xyz = normalize(r10.xyz);
+                
+                r6.w = 2 * dot(-r2.xyz, worldNormal);
+                r2.xyz = worldNormal * -r6.www - r2.xyz;
+                
                 r9.x = dot(r2.zx, -r9.xy);
                 r9.y = dot(r2.xyz, i.upDir.xyz);
+                
                 r10.xyz = r5.www ? -r10.xyz : float3(-0,-0,-1);
                 r9.z = dot(r2.xyz, r10.xyz);
-                r5.w = log2(r1.w);
-                r5.w = 0.400000006 * r5.w;
-                r5.w = exp2(r5.w);
-                r5.w = 10 * r5.w;
+                
+                r5.w = 10 * pow(perceptualRoughness, 0.4);
                 r9.xyz = _Global_PGI.SampleLevel(s2_s, r9.xyz, r5.w).xyz;
-                r5.w = r0.w * 0.699999988 + 0.300000012;
-                r1.w = 1 + -r1.w;
-                r1.w = r5.w * r1.w;
+                r1.w = (r0.w * 0.7 + 0.3) * (1 - perceptualRoughness);
                 r9.xyz = r9.xyz * r1.www;
-                r5.w = cmp(1 >= r1.z);
-                if (r5.w != 0) {
-                r10.xyzw = float4(-0.200000003,-0.100000001,0.100000001,0.300000012) + r1.zzzz;
-                r10.xyzw = saturate(float4(5,10,5,5) * r10.xyzw);
-                r11.xyz = float3(1,1,1) + -_Global_SunsetColor0.xyz;
-                r11.xyz = r10.xxx * r11.xyz + _Global_SunsetColor0.xyz;
-                r12.xyz = float3(1.25,1.25,1.25) * _Global_SunsetColor1.xyz;
-                r13.xyz = -_Global_SunsetColor1.xyz * float3(1.25,1.25,1.25) + _Global_SunsetColor0.xyz;
-                r12.xyz = r10.yyy * r13.xyz + r12.xyz;
-                r13.xyz = cmp(float3(0.200000003,0.100000001,-0.100000001) < r1.zzz);
-                r14.xyz = float3(1.5,1.5,1.5) * _Global_SunsetColor2.xyz;
-                r15.xyz = _Global_SunsetColor1.xyz * float3(1.25,1.25,1.25) + -r14.xyz;
-                r10.xyz = r10.zzz * r15.xyz + r14.xyz;
-                r14.xyz = r14.xyz * r10.www;
-                r10.xyz = r13.zzz ? r10.xyz : r14.xyz;
-                r10.xyz = r13.yyy ? r12.xyz : r10.xyz;
-                r10.xyz = r13.xxx ? r11.xyz : r10.xyz;
+                
+                if (upDotL <= 1) {
+                    r10.xyzw = float4(-0.200000003,-0.100000001,0.100000001,0.300000012) + upDotL;
+                    r10.xyzw = saturate(float4(5,10,5,5) * r10.xyzw);
+                    r11.xyz = float3(1,1,1) + -_Global_SunsetColor0.xyz;
+                    r11.xyz = r10.xxx * r11.xyz + _Global_SunsetColor0.xyz;
+                    r12.xyz = float3(1.25,1.25,1.25) * _Global_SunsetColor1.xyz;
+                    r13.xyz = -_Global_SunsetColor1.xyz * float3(1.25,1.25,1.25) + _Global_SunsetColor0.xyz;
+                    r12.xyz = r10.yyy * r13.xyz + r12.xyz;
+                    r13.xyz = cmp(float3(0.200000003,0.100000001,-0.100000001) < upDotL);
+                    r14.xyz = float3(1.5,1.5,1.5) * _Global_SunsetColor2.xyz;
+                    r15.xyz = _Global_SunsetColor1.xyz * float3(1.25,1.25,1.25) + -r14.xyz;
+                    r10.xyz = r10.zzz * r15.xyz + r14.xyz;
+                    r14.xyz = r14.xyz * r10.www;
+                    r10.xyz = r13.zzz ? r10.xyz : r14.xyz;
+                    r10.xyz = r13.yyy ? r12.xyz : r10.xyz;
+                    r10.xyz = r13.xxx ? r11.xyz : r10.xyz;
                 } else {
-                r10.xyz = float3(1,1,1);
+                    r10.xyz = float3(1,1,1);
                 }
                 r10.xyz = _LightColor0.xyz * r10.xyz;
-                r11.xy = float2(0.150000006,3) * r1.zz;
-                r11.xy = saturate(r11.xy);
-                r5.w = 1 + -r0.y;
+                
+                r11.xy = saturate(float2(0.15, 3) * upDotL);
+                
+                r5.w = 1 - r0.y;
+                
                 r0.y = r11.x * r5.w + r0.y;
-                r0.y = 0.800000012 * r0.y;
+                r0.y = 0.8 * r0.y;
                 r10.xyz = r0.yyy * r10.xyz;
-                r0.y = r4.w * r4.w;
-                r11.xz = r0.xx * r0.xx + float2(-1,1);
+                
+                r0.y = clamped_nDotH * clamped_nDotH;
+                r11.xz = roughness * roughness + float2(-1,1);
                 r0.x = r0.y * r11.x + 1;
                 r0.x = rcp(r0.x);
                 r0.x = r0.x * r0.x;
-                r0.x = r0.x * r2.w;
+                r0.x = r0.x * roughnessSqr;
                 r0.x = 0.25 * r0.x;
                 r0.y = r11.z * r11.z;
                 r2.w = 0.125 * r0.y;
                 r0.y = -r0.y * 0.125 + 1;
                 r4.z = r4.z * r0.y + r2.w;
-                r0.y = r4.x * r0.y + r2.w;
+                r0.y = clamped_nDotL * r0.y + r2.w;
+                
                 r11.xz = float2(1,1) + -r0.zw;
+                
                 r2.w = r1.x * -5.55472994 + -6.98316002;
                 r1.x = r2.w * r1.x;
                 r1.x = exp2(r1.x);
@@ -312,123 +311,129 @@ Shader "VF Shaders/Forward/GeoObject Instancing" {
                 r0.x = r0.x * r0.z;
                 r0.y = r4.z * r0.y;
                 r0.y = rcp(r0.y);
-                r0.z = cmp(0 < r1.z);
+                
+                r0.z = upDotL > 0;
                 r12.xyz = -_Global_AmbientColor1.xyz + _Global_AmbientColor0.xyz;
                 r11.xyw = r11.yyy * r12.xyz + _Global_AmbientColor1.xyz;
-                r1.x = saturate(r1.z * 3 + 1);
+                r1.x = saturate(upDotL * 3 + 1);
                 r12.xyz = -_Global_AmbientColor2.xyz + _Global_AmbientColor1.xyz;
                 r12.xyz = r1.xxx * r12.xyz + _Global_AmbientColor2.xyz;
                 r11.xyw = r0.zzz ? r11.xyw : r12.xyz;
-                r0.z = saturate(r3.w * 0.300000012 + 0.699999988);
+                r0.z = saturate(nDotUp * 0.300000012 + 0.699999988);
                 r12.xyz = r11.xyw * r0.zzz;
                 r12.xyz = r12.xyz * r1.yyy;
-                r0.z = cmp(_Global_PointLightPos.w >= 0.5);
-                r1.x = dot(_Global_PointLightPos.xyz, _Global_PointLightPos.xyz);
-                r1.x = sqrt(r1.x);
-                r1.y = -5 + r1.x;
+                
+                r0.z = _Global_PointLightPos.w >= 0.5;
+                r1.x = length(_Global_PointLightPos.xyz);
+                r1.y = r1.x - 5;
                 r2.w = saturate(r1.y);
+                
                 r3.w = dot(-i.upDir.xyz, _WorldSpaceLightPos0.xyz);
                 r3.w = saturate(5 * r3.w);
+                
                 r2.w = r3.w * r2.w;
-                r13.xyz = -i.upDir.xyz * r1.yyy + _Global_PointLightPos.xyz;
+                r13.xyz = _Global_PointLightPos.xyz - i.upDir.xyz * r1.yyy;
                 r1.y = dot(r13.xyz, r13.xyz);
                 r1.y = sqrt(r1.y);
-                r4.z = 20 + -r1.y;
-                r4.z = 0.0500000007 * r4.z;
+                r4.z = 20 - r1.y;
+                r4.z = 0.05 * r4.z;
                 r4.z = max(0, r4.z);
                 r4.z = r4.z * r4.z;
-                r4.w = cmp(r1.y < 0.00100000005);
-                r14.xyz = float3(1.29999995,1.10000002,0.600000024) * r2.www;
+                r4.w = r1.y < 0.001;
+                r14.xyz = float3(1.3, 1.1, 0.6) * r2.www;
                 r13.xyz = r13.xyz / r1.yyy;
-                r1.y = saturate(dot(r13.xyz, r5.xyz));
+                r1.y = saturate(dot(r13.xyz, worldNormal));
                 r1.y = r1.y * r4.z;
                 r1.y = r1.y * r2.w;
-                r5.xyz = float3(1.29999995,1.10000002,0.600000024) * r1.yyy;
+                r5.xyz = float3(1.3, 1.1, 0.6) * r1.yyy;
                 r5.xyz = r4.www ? r14.xyz : r5.xyz;
-                r5.xyz = r0.zzz ? r5.xyz : 0;
-                r1.y = log2(r11.z);
-                r1.y = 0.600000024 * r1.y;
-                r1.y = exp2(r1.y);
-                r2.w = 0.200000003 * r11.z;
-                r2.w = r2.w * r8.x + r0.w;
-                r13.xyz = r10.xyz * r4.xxx;
-                r4.z = r1.y * 0.200000003 + 0.800000012;
+                r5.xyz = _Global_PointLightPos.w >= 0.5 ? r5.xyz : 0;
+                
+                r1.y = pow(r11.z, 0.6);
+                r2.w = 0.2 * r11.z * r8.x + r0.w;
+                
+                r13.xyz = r10.xyz * clamped_nDotL;
+                
+                r4.z = r1.y * 0.2 + 0.8;
                 r14.xyz = r5.xyz * r4.zzz;
+                
                 r13.xyz = r13.xyz * r1.yyy + r14.xyz;
-                r3.xyz = r3.xyz * r7.xyz + float3(-1,-1,-1);
-                r3.xyz = r0.www * r3.xyz + float3(1,1,1);
+                
+                r3.xyz = lerp(float3(1,1,1), albedo.xyz * r7.xyz, r0.w);
                 r3.xyz = _SpecularColor.xyz * r3.xyz;
                 r3.xyz = r3.xyz * r10.xyz;
+                
                 r0.x = r0.x * r0.y + 0.0318309888;
+                
                 r3.xyz = r3.xyz * r0.xxx;
-                r4.xzw = r5.xyz + r4.xxx;
+                r4.xzw = r5.xyz + clamped_nDotL;
                 r3.xyz = r4.xzw * r3.xyz;
-                if (r0.z != 0) {
-                r0.x = -20 + r1.x;
-                r0.y = saturate(r0.x);
-                r0.y = r0.y * r3.w;
-                r4.xzw = -i.upDir.xyz * r0.xxx + _Global_PointLightPos.xyz;
-                r0.x = dot(r4.xzw, r4.xzw);
-                r0.x = sqrt(r0.x);
-                r0.z = 40 + -r0.x;
-                r0.z = 0.0250000004 * r0.z;
-                r0.z = max(0, r0.z);
-                r0.z = r0.z * r0.z;
-                r1.x = cmp(r0.x < 0.00100000005);
-                r7.xyz = float3(1.29999995,1.10000002,0.600000024) * r0.yyy;
-                r4.xzw = r4.xzw / r0.xxx;
-                r0.x = dot(r2.xyz, r4.xzw);
-                r0.x = max(0, r0.x);
-                r1.y = 9.96578407 * r4.y;
-                r1.y = exp2(r1.y);
-                r0.x = log2(r0.x);
-                r0.x = r1.y * r0.x;
-                r0.x = exp2(r0.x);
-                r0.x = 20 * r0.x;
-                r0.x = r0.x * r4.y;
-                r0.x = r0.x * r0.z;
-                r0.x = r0.x * r0.y;
-                r0.xyz = float3(1.29999995,1.10000002,0.600000024) * r0.xxx;
-                r0.xyz = r1.xxx ? r7.xyz : r0.xyz;
+                
+                if (_Global_PointLightPos.w >= 0.5) {
+                    r0.x = r1.x - 20;
+                    
+                    r0.y = saturate(r0.x) * r3.w;
+                    
+                    r4.xzw = _Global_PointLightPos.xyz - i.upDir.xyz * r0.xxx;
+                    r0.x = length(r4.xzw);
+                    
+                    r0.z = pow(max(0, 0.025 * (40 - r0.x)), 2);
+                    
+                    r1.x = r0.x < 0.001;
+                    
+                    r7.xyz = float3(1.3, 1.1, 0.6) * r0.yyy;
+                    
+                    r4.xzw = r4.xzw / r0.xxx;
+                    
+                    r0.x = max(0, dot(r2.xyz, r4.xzw));
+                    r1.y = exp2(9.965784 * metal_smooth.y);  //log(0.001) / log(0.5) ??
+                    r0.x = pow(r0.x, r1.y);
+                    
+                    r0.x = 20 * r0.x * metal_smooth.y;
+                    r0.x = r0.x * r0.z * r0.y;
+                    r0.xyz = float3(1.3,1.1, 0.6) * r0.xxx;
+                    
+                    r0.xyz = r1.xxx ? r7.xyz : r0.xyz;
                 } else {
-                r0.xyz = float3(0,0,0);
+                    r0.xyz = float3(0,0,0);
                 }
                 r0.xyz = r0.xyz * r2.www;
-                r2.xyz = r8.xyz * float3(0.5,0.5,0.5) + float3(0.5,0.5,0.5);
+                
+                r2.xyz = r8.xyz * float3(0.5, 0.5, 0.5) + float3(0.5, 0.5, 0.5);
                 r0.xyz = r2.xyz * r0.xyz;
                 r0.xyz = r3.xyz * r2.www + r0.xyz;
+                
                 r2.xyz = r12.xyz * r8.xyz;
-                r0.w = -r0.w * 0.600000024 + 1;
-                r1.x = dot(r11.xyx, float3(0.300000012,0.600000024,0.100000001));
-                r1.y = max(_Global_AmbientColor0.x, _Global_AmbientColor0.y);
-                r1.y = max(_Global_AmbientColor0.z, r1.y);
-                r1.xy = float2(0.00300000003,0.00300000003) + r1.xy;
+                
+                r0.w = 1 - r0.w * 0.6;
+                
+                r1.x = dot(r11.xyx, float3(0.3, 0.6, 0.1));
+                r1.y = max(_Global_AmbientColor0.z, max(_Global_AmbientColor0.x, _Global_AmbientColor0.y));
+                r1.xy = float2(0.003, 0.003) + r1.xy;
                 r1.y = 1 / r1.y;
-                r3.xyz = r11.xyw + -r1.xxx;
-                r3.xyz = r3.xyz * float3(0.400000006,0.400000006,0.400000006) + r1.xxx;
+                r3.xyz = r11.xyw - r1.xxx;
+                r3.xyz = r3.xyz * float3(0.4, 0.4, 0.4) + r1.xxx;
                 r3.xyz = r3.xyz * r1.yyy;
-                r3.xyz = float3(1.70000005,1.70000005,1.70000005) * r3.xyz;
+                r3.xyz = float3(1.7, 1.7, 1.7) * r3.xyz;
                 r3.xyz = r9.xyz * r3.xyz;
-                r1.x = saturate(r1.z * 2 + 0.5);
-                r1.x = r1.x * 0.699999988 + 0.300000012;
-                r1.xyz = r1.xxx + r5.xyz;
-                r1.xyz = r3.xyz * r1.xyz;
+                
+                r1.x = saturate(upDotL * 2 + 0.5) * 0.7 + 0.3;
+                r1.xyz = r3.xyz * (r1.xxx + r5.xyz);
                 r0.xyz = r13.xyz * r8.xyz + r0.xyz;
                 r0.xyz = r2.xyz * r0.www + r0.xyz;
-                r1.xyz = r1.xyz * r8.xyz + -r0.xyz;
-                r0.xyz = r1.www * r1.xyz + r0.xyz;
-                r0.w = dot(r0.xyz, float3(0.300000012,0.600000024,0.100000001));
+                r0.xyz = lerp(r0.xyz, r1.xyz * r8.xyz, r1.www);
+                
+                r0.w = dot(r0.xyz, float3(0.3, 0.6,0.1));
                 r1.x = cmp(1 < r0.w);
                 r1.yzw = r0.xyz / r0.www;
-                r0.w = log2(r0.w);
-                r0.w = r0.w * 0.693147182 + 1;
-                r0.w = log2(r0.w);
-                r0.w = r0.w * 0.693147182 + 1;
+                r0.w = log(log(r0.w) + 1) + 1;
                 r1.yzw = r1.yzw * r0.www;
                 r0.xyz = r1.xxx ? r1.yzw : r0.xyz;
-                r0.xyz = r8.xyz * i.indirectLight.xyz + r0.xyz;
-                o0.xyz = r0.xyz + r6.xyz;
-                o0.w = 1;
+                
+                r0.xyz = r8.xyz * i.indirectLight.xyz + r0.xyz + emission;
+                
+                o.sv_target.xyz = r0.xyz
+                o.sv_target.w = 1;
 
                 return o;
             }
