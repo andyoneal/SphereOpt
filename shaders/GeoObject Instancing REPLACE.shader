@@ -38,6 +38,7 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 5.0
+            #pragma multi_compile_fwdbase nolightmap nodirlightmap nodynlightmap novertexlight
             #pragma enable_d3d11_debug_symbols
 
             #include "UnityCG.cginc"
@@ -113,7 +114,7 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
 
                 float vertw = objId < 0.5 ? 0 : 1;
                 worldPos = mul(unity_ObjectToWorld, float4(worldPos, vertw)); //r0.xyz
-                float4 clipPos = mul(unity_MatrixVP, worldPos); //r3.xyzw
+                float4 clipPos = mul(unity_MatrixVP, float4(worldPos, 1)); //r3.xyzw
 
                 worldNormal = UnityObjectToWorldNormal(worldNormal); //r1.xyz
                 worldTangent = UnityObjectToWorldDir(worldTangent.xyz); //r4.xyz
@@ -174,41 +175,7 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
                 float3 premulAlpha = lerp(float3(1, 1, 1), _Color.xyz, saturate(1.25 * (albedo.w - 0.1))); //r7.xyz
                 albedo.xyz = albedo.xyz * premulAlpha; //r8.xyz
 
-                //shadow stuff
-                // r9.x = cb4[9].z; //unity_MatrixV
-                // r9.y = cb4[10].z; //unity_MatrixV
-                // r9.z = cb4[11].z; //unity_MatrixV
-                // r1.w = dot(r1.xyz, r9.xyz);
-                // r9.xyz = -cb3[25].xyz + worldPos; //unity_ShadowFadeCenterAndType
-                // r2.w = dot(r9.xyz, r9.xyz);
-                // r2.w = sqrt(r2.w);
-                // r2.w = r2.w + -r1.w;
-                // r1.w = cb3[25].w * r2.w + r1.w; //unity_ShadowFadeCenterAndType
-                // r1.w = saturate(r1.w * cb3[24].z + cb3[24].w); //_LightShadowData
-                // r2.w = cmp(cb5[0].x == 1.000000);
-                // if (r2.w != 0) {
-                //     r2.w = cmp(cb5[0].y == 1.000000);
-                //     r9.xyz = cb5[2].xyz * i.TBNW1.www;
-                //     r9.xyz = cb5[1].xyz * i.TBNW0.www + r9.xyz;
-                //     r9.xyz = cb5[3].xyz * i.TBNW2.www + r9.xyz;
-                //     r9.xyz = cb5[4].xyz + r9.xyz;
-                //     r0.yzw = r2.www ? r9.xyz : worldPos;
-                //     r0.yzw = -cb5[6].xyz + r0.yzw;
-                //     r9.yzw = cb5[5].xyz * r0.yzw;
-                //     r0.y = r9.y * 0.25 + 0.75;
-                //     r0.z = cb5[0].z * 0.5 + 0.75;
-                //     r9.x = max(r0.y, r0.z);
-                //     r9.xyzw = t6.Sample(s0_s, r9.xzw).xyzw;
-                // } else {
-                //     r9.xyzw = float4(1,1,1,1);
-                // }
-                // r0.y = saturate(dot(r9.xyzw, cb2[46].xyzw)); //unity_OcclusionMaskSelector
-                // r0.zw = v7.xy / v7.ww;
-                // r0.z = t4.Sample(s1_s, r0.zw).x;
-                // r0.y = r0.y + -r0.z;
-                // r0.y = r1.w * r0.y + r0.z;
-
-                UNITY_LIGHT_ATTENUATION(atten, inp, worldPos); //r0.y
+                UNITY_LIGHT_ATTENUATION(atten, i, worldPos); //r0.y
 
                 float3 worldNormal;
                 worldNormal.x = dot(i.TBNW0.xyz, tangentNormal.xyz);
@@ -239,63 +206,10 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
                 float upDotL = dot(i.upDir, lightDir); //r1.z
                 float nDotUp = dot(worldNormal, i.upDir); //r3.w
 
-                // float magSqrUpDir = dot(i.upDir, i.upDir);
-                // //rearranged cross()
-                // r9.xyz = float3(0,1,0) * i.upDir.yzx;
-                // r9.xyz = i.upDir.xyz * float3(1,0,0) - r9.xyz;
-                // 
-                // r7.w = dot(r9.xy, r9.xy);
-                // r7.w = rsqrt(r7.w);
-                // r9.xyz = r9.xyz * r7.www;
-                // 
-                // r9.xyz = magSqrUpDir > 0.01 && i.upDir.y < 0.9999 ? r9.xyz : float3(0,1,0);
-                // 
-                // r6.w = dot(r9.xy, r9.xy); //magSqr
-                // r5.w = magSqrUpDir > 0.01 && r6.w > 0.01 : 0;
-                // 
-                // //rearranged cross()
-                // r10.xyz = i.upDir.yzx * r9.xyz;
-                // r10.xyz = r9.zxy * i.upDir.zxy + -r10.xyz;
-                // r10.xyz = normalize(r10.xyz);
-                // 
-                // r6.w = 2 * dot(-r2.xyz, worldNormal);
-                // r2.xyz = worldNormal * -r6.www - r2.xyz;
-                // 
-                // r9.x = dot(r2.zx, -r9.xy);
-                // r9.y = dot(r2.xyz, i.upDir.xyz);
-                // 
-                // r10.xyz = r5.www ? -r10.xyz : float3(-0,-0,-1);
-                // r9.z = dot(r2.xyz, r10.xyz);
-                // 
-                // r5.w = 10 * pow(perceptualRoughness, 0.4);
-                // r9.xyz = _Global_PGI.SampleLevel(s2_s, r9.xyz, r5.w).xyz;
-                // r1.w = (r0.w * 0.7 + 0.3) * (1 - perceptualRoughness);
-                // r9.xyz = r9.xyz * r1.www;
-
                 float reflectivity; //r1.w
                 float3 reflectColor = reflection(perceptualRoughness, metallicLow, i.upDir, viewDir, worldNormal,
                                                 /*out*/ reflectivity); //r9.xyz
 
-                // if (upDotL <= 1) {
-                //     r10.xyzw = saturate(float4(5,10,5,5) * (upDotL + float4(-0.2, -0.1, 0.1, 0.3)));
-                //     
-                //     r11.xyz = lerp(_Global_SunsetColor0.xyz, float3(1,1,1), r10.xxx);
-                //     
-                //     r12.xyz = float3(1.25,1.25,1.25) * _Global_SunsetColor1.xyz;
-                //     r13.xyz = _Global_SunsetColor0.xyz - _Global_SunsetColor1.xyz * float3(1.25,1.25,1.25);
-                //     r12.xyz = r10.yyy * r13.xyz + r12.xyz;
-                //     r13.xyz = cmp(float3(0.200000003,0.100000001,-0.100000001) < upDotL);
-                //     r14.xyz = float3(1.5,1.5,1.5) * _Global_SunsetColor2.xyz;
-                //     r15.xyz = _Global_SunsetColor1.xyz * float3(1.25,1.25,1.25) + -r14.xyz;
-                //     r10.xyz = r10.zzz * r15.xyz + r14.xyz;
-                //     r14.xyz = r14.xyz * r10.www;
-                //     r10.xyz = r13.zzz ? r10.xyz : r14.xyz;
-                //     r10.xyz = r13.yyy ? r12.xyz : r10.xyz;
-                //     r10.xyz = r13.xxx ? r11.xyz : r10.xyz;
-                // } else {
-                //     r10.xyz = float3(1,1,1);
-                // }
-                // r10.xyz = _LightColor0.xyz * r10.xyz;
 
                 float3 sunlightColor = calculateSunlightColor(_LightColor0.xyz, upDotL, _Global_SunsetColor0.xyz,
                                                       _Global_SunsetColor1.xyz, _Global_SunsetColor2.xyz); //r10.xyz
@@ -303,59 +217,17 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
                 atten = 0.8 * lerp(atten, 1, saturate(0.15 * upDotL)); //r0.y
                 sunlightColor = atten * sunlightColor.xyz; //r10.xyz
 
-                // r0.y = clamped_nDotH * clamped_nDotH;
-                // r11.xz = roughness * roughness + float2(-1,1);
-                // r0.x = r0.y * r11.x + 1;
-                // r0.x = rcp(r0.x);
-                // r0.x = r0.x * r0.x;
-                // r0.x = r0.x * roughnessSqr;
-                // r0.x = 0.25 * r0.x;
-                // r0.y = r11.z * r11.z;
-                // r2.w = 0.125 * r0.y;
-                // r0.y = -r0.y * 0.125 + 1;
-                // r4.z = r4.z * r0.y + r2.w;
-                // r0.y = clamped_nDotL * r0.y + r2.w;
-                // r2.w = r1.x * -5.55472994 + -6.98316002;
-                // r1.x = r2.w * r1.x;
-                // r1.x = exp2(r1.x);
-                // r0.z = (1 - metallicHigh) * r1.x + metallicHigh;
-                // r0.x = r0.x * r0.z;
-                // 
-                // r0.y = rcp(r4.z * r0.y);
-
                 float specularTerm = GGX(roughness, metallicHigh, clamped_nDotH, clamped_nDotV, clamped_nDotL,
                                 clamped_vDotH);
 
                 float3 ambientTwilight = lerp(_Global_AmbientColor2.xyz, _Global_AmbientColor1.xyz,
                                 saturate(upDotL * 3 + 1)); //r12.xyz
-                float3 ambientLowSun = lerp(_Global_AmbientColor1.xyz, _Global_AmbientColor0.xyz,
-           saturate(upDotL * 3)); //r11.xyw
+                float3 ambientLowSun = lerp(_Global_AmbientColor1.xyz, _Global_AmbientColor0.xyz, saturate(upDotL * 3)); //r11.xyw
                 float3 ambientColor = upDotL > 0 ? ambientLowSun : ambientTwilight; //r11.xyw
 
                 float3 ambientLightColor = ambientColor * saturate(nDotUp * 0.3 + 0.7); //r12.xyz
                 ambientLightColor = ambientLightColor.xyz * pow(nDotL * 0.35 + 1, 3); //r12.xyz
                 ambientLightColor = ambientLightColor * albedo.xyz; //r2.xyz
-
-                //r0.z = _Global_PointLightPos.w >= 0.5;
-                //r1.x = length(_Global_PointLightPos.xyz);
-                // float distanceFromHeadlamp = length(_Global_PointLightPos.xyz) - 5; //r1.y
-                // float headlampVisibility = saturate(distanceFromHeadlamp); //r2.w
-                // float daylightDimFactor = saturate(5 * dot(-i.upDir.xyz, _WorldSpaceLightPos0.xyz)); //r3.w
-                // 
-                // //r2.w = daylightDimFactor * headlampVisibility;
-                // 
-                // float3 directionToPlayer = _Global_PointLightPos.xyz - i.upDir.xyz * distanceFromHeadlamp; //r13.xyz
-                // distObjToPlayer = length(directionToPlayer); //r1.y
-                // directionToPlayer /= distObjToPlayer; //r13.xyz
-                // 
-                // float falloff = pow(max(0, 0.05 * (20 - distObjToPlayer)), 2); //r4.z
-                // float lightIntensity = falloff * saturate(dot(directionToPlayer, worldNormal)); //r1.y
-                // lightIntensity = distObjToPlayer < 0.001 ? 1 : lightIntensity;
-                // lightIntensity = lightIntensity * daylightDimFactor * headlampVisibility;
-                // 
-                // float3 lightColor = float3(1.3, 1.1, 0.6);
-                // lightColor = lightColor * lightIntensity;
-                // lightColor = _Global_PointLightPos.w >= 0.5 ? lightColor : float3(0,0,0);
 
                 float3 headlampLight =
                     calculateLightFromHeadlamp(_Global_PointLightPos, i.upDir, lightDir, worldNormal); //r5.xyz
@@ -439,6 +311,7 @@ Shader "VF Shaders/Forward/GeoObject Instancing"
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 5.0
+            #pragma multi_compile_shadowcaster
             #pragma enable_d3d11_debug_symbols
 
             #include "UnityCG.cginc"
