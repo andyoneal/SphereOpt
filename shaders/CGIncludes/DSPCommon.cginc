@@ -1,5 +1,7 @@
 #include "UnityCG.cginc"
 
+#define INV_TEN_PI 0.0318309888
+
 struct GPUOBJECT
 {
     uint objId;
@@ -26,8 +28,8 @@ float SchlickFresnel_Approx(float F0, float vDotH)
 }
 
 float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal, float brightness) {
-    float isHeadlampOn = headlampPos.w >= 0.5 ? 1.0 : 0.0;
-    if (headlampPos.w < 0.5) return float3(0, 0, 0);
+    bool isHeadlampOn = headlampPos.w >= 0.5;
+    if (!isHeadlampOn) return float3(0, 0, 0);
 
     float distanceFromHeadlamp = length(headlampPos) - 5.0;
     float headlampVisibility = saturate(distanceFromHeadlamp);
@@ -36,14 +38,14 @@ float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 light
     float3 directionToPlayer = headlampPos - upDir * distanceFromHeadlamp;
     float distObjToPlayer = length(directionToPlayer);
     directionToPlayer /= distObjToPlayer;
-
+    
     float falloff = pow(max((20.0 - distObjToPlayer) * 0.05, 0), 2);
+    float lightIntensity = falloff * saturate(dot(directionToPlayer, worldNormal));
+    lightIntensity = distObjToPlayer < 0.001 ? 1 : lightIntensity;
+    lightIntensity = lightIntensity * daylightDimFactor * headlampVisibility;
+    
     float3 lightColor = float3(1.3, 1.1, 0.6) * brightness;
-
-    float lightIntensity = headlampVisibility * daylightDimFactor * falloff * saturate(dot(directionToPlayer, worldNormal));
-    float3 computedLight = lightIntensity * lightColor;
-
-    return distObjToPlayer < 0.001 ? daylightDimFactor * lightColor : computedLight;
+    return lightColor * lightIntensity;
 }
 
 float3 calculateLightFromHeadlamp(float4 headlampPos, float3 upDir, float3 lightDir, float3 worldNormal) {
@@ -168,8 +170,8 @@ float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetC
     float3 sunsetColor = float3(1,1,1);
     if (upDotL <= 1) {
         sunsetColor0 = lerp(sunsetColor0, float3(1,1,1), lightColorScreen);
-        sunsetColor1 = lerp(sunsetColor1, float3(1,1,1), lightColorScreen) * float3(1.25,1.25,1.25);
-        sunsetColor2 = lerp(sunsetColor2, float3(1,1,1), lightColorScreen) * float3(1.5, 1.5, 1.5);
+        sunsetColor1 = lerp(sunsetColor1, float3(1,1,1), lightColorScreen) * float3(1.25, 1.25, 1.25);
+        sunsetColor2 = lerp(sunsetColor2, float3(1,1,1), lightColorScreen) * float3( 1.5,  1.5,  1.5);
 
         float3 blendDawn     = lerp(float3(0,0,0), sunsetColor2,  saturate( 5 * (upDotL + 0.3)));
         float3 blendSunrise  = lerp(sunsetColor2,  sunsetColor1,  saturate( 5 * (upDotL + 0.1)));
