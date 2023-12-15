@@ -1,0 +1,7 @@
+ManifestFileVersion: 0
+CRC: 4241671993
+AssetBundleManifest:
+  AssetBundleInfos:
+    Info_0:
+      Name: sphereopt-bundle
+      Dependencies: {}
