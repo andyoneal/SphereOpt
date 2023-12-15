@@ -8,7 +8,7 @@ namespace SphereOpt
     {
         private static Mesh _HexMesh;
         private static Material _HexMat;
-        
+
         public static Material HexMat
         {
             get {
@@ -16,7 +16,7 @@ namespace SphereOpt
                 return _HexMat;
             }
         }
-        
+
         public static Mesh HexMesh
         {
             get {
@@ -41,7 +41,6 @@ namespace SphereOpt
         private static readonly int SunColor = Shader.PropertyToID("_SunColor");
         private static readonly int DysonEmission = Shader.PropertyToID("_DysonEmission");
 
-
         private static void SetupMesh()
         {
             _HexMesh = new Mesh();
@@ -50,7 +49,6 @@ namespace SphereOpt
             var t1axis = new Vector3(-40f, (float)(40.0 / Math.Sqrt(3)), 0);
             var t2axis = new Vector3(40f, (float)(40.0 / Math.Sqrt(3)), 0);
             var t0axis = new Vector3(0, (float)(80.0 / Math.Sqrt(3)), 0);
-
 
             newVerts[0] = Vector3.zero;
             newVerts[1] = t0axis;
@@ -96,21 +94,16 @@ namespace SphereOpt
             }
             instShellLayers = null;
         }
-        
+
         public InstDysonShellLayer getOrCreateInstShellLayer(int layerId)
         {
-            if (instShellLayers[layerId] == null)
-            {
-                instShellLayers[layerId] = new InstDysonShellLayer(this, layerId);
-            }
-            return instShellLayers[layerId];
+            return instShellLayers[layerId] = instShellLayers[layerId] ?? new InstDysonShellLayer(layerId);
         }
 
         public InstDysonShellLayer getInstShellLayer(int layerId)
         {
             return instShellLayers[layerId];
         }
-        
 
         public InstDysonShellRenderer(DysonSphere _dysonSphere)
         {
@@ -133,7 +126,6 @@ namespace SphereOpt
         {
             args[layerId * 5 + 1] = hexCount;
             argsBufferIsDirty = true;
-
         }
 
         public void RenderShells(ERenderPlace place, int editorMask, int gameMask)
@@ -166,7 +158,10 @@ namespace SphereOpt
             {
                 var localPlanet = gameData.localPlanet;
                 var mainPlayer = gameData.mainPlayer;
-                sunPos = localPlanet == null ? starData.uPosition - mainPlayer.uPosition : (Vector3)Maths.QInvRotateLF(localPlanet.runtimeRotation, starData.uPosition - localPlanet.uPosition);
+                sunPos = localPlanet == null
+                    ? (Vector3)(starData.uPosition - mainPlayer.uPosition)
+                    : (Vector3)Maths.QInvRotateLF(localPlanet.runtimeRotation,
+                        starData.uPosition - localPlanet.uPosition);
                 if (place == ERenderPlace.Starmap)
                 {
                     sunPosMap = (starData.uPosition - UIStarmap.viewTargetStatic) * 0.00025;
@@ -185,6 +180,10 @@ namespace SphereOpt
                     break;
                 case ERenderPlace.Dysonmap:
                     layer = 21;
+                    break;
+                case ERenderPlace.Universe:
+                case ERenderPlace.DemoScene:
+                default:
                     break;
             }
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
@@ -207,7 +206,6 @@ namespace SphereOpt
                 //TODO: No need to reset the props every time, I think.
                 var dysonSphereLayer = dysonSphere.layersIdBased[i];
                 instLayer.props.SetMatrix(ObjectToWorld, Matrix4x4.TRS(pos, localRot * dysonSphereLayer.currentRotation, Vector3.one));
-                //TODO: create localRot matrix ahead of time
 
                 Graphics.DrawMeshInstancedIndirect(HexMesh, 0, HexMat,
                     new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), argsBuffer, i * 5 * 4,
@@ -223,7 +221,7 @@ namespace SphereOpt
                 instShellLayers[layerId] = null;
             }
         }
-        
+
         public void RemoveLayer(InstDysonShellLayer layer)
         {
             if (layer == null) return;

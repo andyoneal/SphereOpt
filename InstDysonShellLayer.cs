@@ -29,7 +29,7 @@ namespace SphereOpt
         public struct ShellData
         {
             public int color;
-            public uint state; 
+            public uint state;
             public int progressBaseIndex;
             public int polyCount;
             public int polygonIndex;
@@ -61,10 +61,7 @@ namespace SphereOpt
         public bool shellBufferIsDirty = true;
         public bool polygonBufferIsDirty = true;
 
-        private InstDysonShellRenderer instDysonShellRenderer;
-
-        public MaterialPropertyBlock props = new();
-        //private bool propsAreDirty = true;
+        public MaterialPropertyBlock props = new MaterialPropertyBlock();
         private static readonly int Radius = Shader.PropertyToID("_Radius");
         private static readonly int Scale = Shader.PropertyToID("_Scale");
         private static readonly int GridSize = Shader.PropertyToID("_GridSize");
@@ -75,10 +72,9 @@ namespace SphereOpt
         private static readonly int ShellBuffer = Shader.PropertyToID("_ShellBuffer");
         private static readonly int PolygonBuffer = Shader.PropertyToID("_PolygonBuffer");
 
-        public InstDysonShellLayer(InstDysonShellRenderer renderer, int layerId)
+        public InstDysonShellLayer(int layerId)
         {
             this.layerId = layerId;
-            instDysonShellRenderer = renderer;
             hexProgressPool = new HexProgressData[64];
             hexPool = new List<HexData>();
             shellPool = new ShellData[11];
@@ -88,7 +84,7 @@ namespace SphereOpt
             polygonBuffer = new ComputeBuffer(64, 24);
             SetProps();
         }
-        
+
         public void Free()
         {
             if (polygonBuffer != null)
@@ -97,21 +93,21 @@ namespace SphereOpt
                 polygonBuffer = null;
             }
             polygonPool = null;
-            
+
             if (hexProgressBuffer != null)
             {
                 hexProgressBuffer.Release();
                 hexProgressBuffer = null;
             }
             hexProgressPool = null;
-            
+
             if (shellBuffer != null)
             {
                 shellBuffer.Release();
                 shellBuffer = null;
             }
             shellPool = null;
-            
+
             if (hexBuffer != null)
             {
                 hexBuffer.Release();
@@ -119,7 +115,7 @@ namespace SphereOpt
             }
             hexPool.Clear();
             hexPool = null;
-            
+
             progressBaseCursor = 0;
             polygonCursor = 0;
             cachedHexCount = -1;
@@ -132,7 +128,7 @@ namespace SphereOpt
         {
             var newCap = polygonPool.Length + nextCount * 32;
             var destinationArray = new PolygonData[newCap];
-            
+
             if (polygonPool != null)
             {
                 Array.Copy(polygonPool, destinationArray, polygonPool.Length);
@@ -254,24 +250,17 @@ namespace SphereOpt
 
         public void SetProps()
         {
-            if (true)
-            {
-                props.SetFloat(Radius, radius);
-                props.SetFloat(Scale, gridScale);
-                props.SetFloat(GridSize, gridSize);
-                props.SetFloat(CellSize, 0.94f);
-                props.SetFloat(LayerId, layerId);
-                props.SetBuffer(HexBuffer, hexBuffer);
-                props.SetBuffer(HexProgressBuffer, hexProgressBuffer);
-                props.SetBuffer(ShellBuffer, shellBuffer);
-                props.SetBuffer(PolygonBuffer, polygonBuffer);
-                //props.SetColor(DysonEmission, instDysonShellRenderer.dysonSphere.emissionColor);
-                //props.SetColor(SunColor, instDysonShellRenderer.dysonSphere.sunColor);
-
-                //propsAreDirty = false;
-            }
+            props.SetFloat(Radius, radius);
+            props.SetFloat(Scale, gridScale);
+            props.SetFloat(GridSize, gridSize);
+            props.SetFloat(CellSize, 0.94f);
+            props.SetFloat(LayerId, layerId);
+            props.SetBuffer(HexBuffer, hexBuffer);
+            props.SetBuffer(HexProgressBuffer, hexProgressBuffer);
+            props.SetBuffer(ShellBuffer, shellBuffer);
+            props.SetBuffer(PolygonBuffer, polygonBuffer);
         }
-        
+
         public void RemoveDysonShell(int shellId)
         {
             hexPool.RemoveAll(x => x.shellIndex == shellId);
@@ -291,7 +280,6 @@ namespace SphereOpt
             //TODO: shouldn't have to do this? leave as is?
             shellPool[shellId].center = Vector3.zero;
             shellPool[shellId].state = 0;
-            //shellPool[shellId].clockwise = 0;
             shellPool[shellId].color = 0;
             shellPool[shellId].polyCount = 0;
             shellPool[shellId].progressBaseIndex = 0;

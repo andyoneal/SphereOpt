@@ -14,12 +14,12 @@ namespace SphereOpt
         private static int csKernelId;
         private static uint csThreads;
         private static ComputeBuffer argBuffer;
-        
+
         private static StarData starData;
         private static GameData gameData;
         private static DysonSphere dysonSphere;
         private static DysonSphereSegmentRenderer currentDSSR;
-        
+
         private static readonly int InstBuffer = Shader.PropertyToID("_InstBuffer");
         private static readonly int LayerRotations = Shader.PropertyToID("_LayerRotations");
         private static readonly int SunColor = Shader.PropertyToID("_SunColor");
@@ -35,11 +35,10 @@ namespace SphereOpt
         private static readonly int LOD1IDBuffer = Shader.PropertyToID("_LOD1_ID_Buffer");
         private static readonly int LOD2IDBuffer = Shader.PropertyToID("_LOD2_ID_Buffer");
 
-
         public static void SetupMeshes()
         {
             if (lodMeshes != null) return;
-            
+
             lodMeshes = new Mesh[DysonSphereSegmentRenderer.totalProtoCount][];
             var meshSimplifier = new MeshSimplifier();
             for (int i = 0; i < DysonSphereSegmentRenderer.totalProtoCount; i++)
@@ -58,7 +57,7 @@ namespace SphereOpt
                 {
                     options.PreserveBorderEdges = true;
                     options.PreserveUVFoldoverEdges = true;
-                    options.PreserveUVSeamEdges = false;    
+                    options.PreserveUVSeamEdges = false;  
                 }
                 options.MaxIterationCount = 1000;
                 meshSimplifier.SimplificationOptions = options;
@@ -76,7 +75,7 @@ namespace SphereOpt
             if (lodBatchBuffers != null) return;
 
             var totalProtoCount = DysonSphereSegmentRenderer.totalProtoCount;
-            
+
             lodBatchBuffers = new ComputeBuffer[totalProtoCount][];
             for (int i = 0; i < totalProtoCount; i++)
             {
@@ -111,21 +110,20 @@ namespace SphereOpt
         public static void SetupLODShader()
         {
             if (frameLODShader != null) return;
-            
+
             frameLODShader = CustomShaderManager.LoadComputeShader("Frame LOD");
             csKernelId = frameLODShader.FindKernel("CSMain");
             frameLODShader.GetKernelThreadGroupSizes(csKernelId, out csThreads, out var _, out var _);
         }
-        
+
         private static void switchDSSR(DysonSphereSegmentRenderer dssr)
         {
-            
             instBufferChangedSize = true;
-            
+
             starData = dssr.starData;
             gameData = dssr.gameData;
             dysonSphere = dssr.dysonSphere;
-            
+
             currentDSSR = dssr;
         }
 
@@ -149,7 +147,7 @@ namespace SphereOpt
         public static void Render(DysonSphereSegmentRenderer dssr, ERenderPlace place, int editorMask, int gameMask)
         {
             if (currentDSSR == null || currentDSSR != dssr) switchDSSR(dssr);
-            
+
             if (instBufferChangedSize)
             {
                 rebuildInstBuffers();
@@ -164,7 +162,7 @@ namespace SphereOpt
                 var localPlanet = gameData.localPlanet;
                 var mainPlayer = gameData.mainPlayer;
                 sunPos = localPlanet == null
-                    ? starData.uPosition - mainPlayer.uPosition
+                    ? (Vector3)(starData.uPosition - mainPlayer.uPosition)
                     : (Vector3)Maths.QInvRotateLF(localPlanet.runtimeRotation,
                         starData.uPosition - localPlanet.uPosition);
                 if (place == ERenderPlace.Starmap)
@@ -197,10 +195,13 @@ namespace SphereOpt
                     cam = UIRoot.instance.uiGame.dysonEditor.screenCamera;
                     layer = 21;
                     break;
+                case ERenderPlace.DemoScene:
+                default:
+                    break;
             }
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
             Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
-            
+
             var pos = place == ERenderPlace.Universe ? sunPos : sunPosMap;
             var scale = place == ERenderPlace.Starmap || place == ERenderPlace.Dysonmap
                 ? new Vector3(0.00025f, 0.00025f, 0.00025f)
@@ -254,13 +255,13 @@ namespace SphereOpt
                 {
                     mpb.SetBuffer(InstIndexBuffer, lodBatchBuffers[b][j]);
                     if (shouldRender)
+                    {
                         Graphics.DrawMeshInstancedIndirect(lodMeshes[b][j], 0, instMats[b],
                             new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), argBuffer,
                             (b * 15 + j * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
+                    }
                 }
             }
         }
-
-        
     }
 }

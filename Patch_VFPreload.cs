@@ -1,59 +1,60 @@
 ﻿using HarmonyLib;
 using UnityEngine;
 
-namespace SphereOpt;
-
-internal static class Patch_VFPreload
+namespace SphereOpt
 {
-    [HarmonyPatch(typeof(VFPreload), "SaveMaterial")]
-    [HarmonyPrefix]
-    static bool VFPreload_SaveMaterial(Material mat)
+    internal static class Patch_VFPreload
     {
-        if (mat == null)
+        [HarmonyPatch(typeof(VFPreload), "SaveMaterial")]
+        [HarmonyPrefix]
+        private static bool VFPreload_SaveMaterial(Material mat)
         {
-            return false;
-        }
-
-        CustomShaderManager.ReplaceShaderIfAvailable(mat);
-
-        return true;
-    }
-
-    [HarmonyPatch(typeof(VFPreload), "SaveMaterials", typeof(Material[]))]
-    [HarmonyPrefix]
-    static bool VFPreload_SaveMaterials(Material[] mats)
-    {
-        if (mats == null)
-        {
-            return false;
-        }
-
-        foreach (Material mat in mats)
-        {
-            if (mat == null) continue;
-            CustomShaderManager.ReplaceShaderIfAvailable(mat);
-        }
-        return true;
-    }
-
-    [HarmonyPatch(typeof(VFPreload), "SaveMaterials", typeof(Material[][]))]
-    [HarmonyPrefix]
-    static bool VFPreload_SaveMaterials(Material[][] mats)
-    {
-        if (mats == null)
-        {
-            return false;
-        }
-
-        foreach (Material[] matarray in mats)
-        {
-            if(matarray == null) continue;
-            foreach (var mat in matarray)
+            if (mat == null)
             {
-                if(mat == null) continue;
+                return false;
+            }
+
+            CustomShaderManager.ReplaceShaderIfAvailable(mat);
+
+            return true;
+        }
+
+        [HarmonyPatch(typeof(VFPreload), "SaveMaterials", typeof(Material[]))]
+        [HarmonyPrefix]
+        private static bool VFPreload_SaveMaterials(Material[] mats)
+        {
+            if (mats == null)
+            {
+                return false;
+            }
+
+            foreach (Material mat in mats)
+            {
+                if (mat == null) continue;
                 CustomShaderManager.ReplaceShaderIfAvailable(mat);
             }
+            return true;
         }
-        return true;
+
+        [HarmonyPatch(typeof(VFPreload), "SaveMaterials", typeof(Material[][]))]
+        [HarmonyPrefix]
+        private static bool VFPreload_SaveMaterials(Material[][] mats)
+        {
+            if (mats == null)
+            {
+                return false;
+            }
+
+            foreach (Material[] matarray in mats)
+            {
+                if(matarray == null) continue;
+                foreach (var mat in matarray)
+                {
+                    if(mat == null) continue;
+                    CustomShaderManager.ReplaceShaderIfAvailable(mat);
+                }
+            }
+            return true;
+        }
     }
 }

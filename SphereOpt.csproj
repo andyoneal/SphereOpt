@@ -4,7 +4,7 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>SphereOpt</AssemblyName>
     <Description>Optimize Dyson Sphere rendering</Description>
-    <Version>0.8.2</Version>
+    <Version>0.8.3</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
@@ -12,13 +12,17 @@
     <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
 
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="BepInEx.Analyzers" Version="1.0.8" PrivateAssets="all">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="BepInEx.Core" Version="5.*" />
+    <PackageReference Include="BepInEx.Core" Version="5.4.17" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
-    <PackageReference Include="DysonSphereProgram.GameLibs" Version="0.9.27.15466-r.0" />
+    <PackageReference Include="DysonSphereProgram.GameLibs" Version="0.10.28.20779-r.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.7.0" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.4.0">
       <PrivateAssets>all</PrivateAssets>
