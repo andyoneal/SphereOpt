@@ -105,6 +105,15 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             /* All of the properties and globals that will be used in the shader */
             float4 _LightColor0;
             float _UseScale;
+            float _Mono_Anim_LP;
+            float _Mono_Anim_LW;
+            float _Mono_Anim_Power;
+            uint _Mono_Anim_State;
+            float _Mono_Anim_Time;
+            uint _Mono_Inst;
+            float3 _Mono_Pos;
+            float4 _Mono_Rot;
+            float3 _Mono_Scl;
             float4 _Global_AmbientColor0;
             float4 _Global_AmbientColor1;
             float4 _Global_AmbientColor2;
@@ -163,12 +172,8 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 /* _IdBuffer: an array of Ids (uints) populated by the LOD compute shader, which determines
                     which instances of the object need to be rendered. The compute shader runs each frame, adds
                     Ids for use as indices on _InstBufffer, and provides a final count 'n'. The model will be
-                    rendered 'n' times, with the built in 'System Value' SV_InstanceID iterating from 0 to n-1.
-                    
-                    objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
-                    pos: xyz position of this instance in the world
-                    rot: quaternion rotation */
-                float objIndex = _IdBuffer[instanceID];
+                    rendered 'n' times, with the built in 'System Value' SV_InstanceID iterating from 0 to n-1. */
+                float objIndex = _Mono_Inst > 0 ? 0 : _IdBuffer[instanceID];
                   
                 /* _InstBuffer: an array of GPUOBJECTs, which is a struct defined in the game code.
                     This buffer stores all of the position and rotation info for every copy of the object,
@@ -179,9 +184,9 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     objId: an Id for this instance, used to lookup the right data on the _AnimBuffer below.
                     pos: xyz position of this instance in the world
                     rot: quaternion rotation */
-                float objId = _InstBuffer[objIndex].objId;
-                float3 pos = _InstBuffer[objIndex].pos;
-                float4 rot = _InstBuffer[objIndex].rot;
+                float objId = _Mono_Inst > 0 ? 0 : _InstBuffer[objIndex].objId;
+                float3 pos = _Mono_Inst > 0 ? _Mono_Pos : _InstBuffer[objIndex].pos;
+                float4 rot = _Mono_Inst > 0 ? _Mono_Rot :_InstBuffer[objIndex].rot;
                 
                 /* _AnimBuffer: an array of AnimData, which is a struct defined in the game code.
                     Typically used for animation data, but frequently used as a place to put extra data.
@@ -193,16 +198,16 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     working_length:
                     state:
                     power: */
-                float time = _AnimBuffer[objId].time;
-                float prepare_length = _AnimBuffer[objId].prepare_length;
-                float working_length = _AnimBuffer[objId].working_length;
-                uint state = _AnimBuffer[objId].state;
-                float power = _AnimBuffer[objId].power;
+                float time = _Mono_Inst > 0 ? _Mono_Anim_Time : _AnimBuffer[objId].time;
+                float prepare_length = _Mono_Inst > 0 ? _Mono_Anim_LP : _AnimBuffer[objId].prepare_length;
+                float working_length = _Mono_Inst > 0 ? _Mono_Anim_LW : _AnimBuffer[objId].working_length;
+                uint state = _Mono_Inst > 0 ? _Mono_Anim_State : _AnimBuffer[objId].state;
+                float power = _Mono_Inst > 0 ? _Mono_Anim_Power : _AnimBuffer[objId].power;
                 
                 /* Resize/Scale: mostly used for randomizing size of vegetation
                     If _UseScale is on, grab the scaling factor from _ScaleBuffer and use to scale
                     both the vertices and the normals. For some reason, tangent isn't scaled.*/
-                float3 scale = _ScaleBuffer[objIndex];
+                float3 scale = _Mono_Inst > 0 ? _Mono_Scl : _ScaleBuffer[objIndex];
                 bool useScale = _UseScale > 0.5;
                 float3 scaledVPos = useScale ? v.vertex.xyz * scale.xyz : v.vertex.xyz;
                 float3 scaledVNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz;
@@ -313,6 +318,10 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 float emissionPower = inp.time_state_emiss.z;
                 float3 worldPos1 = inp.worldPos.xyz;
                 float3 indirectLight = inp.indirectLight.xyz;
+
+                /* related to drawing the outline around objects on select or mouseover */
+                if (_Mono_Inst > 0 && length(worldPos1) < 0.05 + lodDist)
+                    discard;
               
                 /* Choose color based on the veinType */
                 /* Why not just veinType == 1? The general rule is to assume imprecision. Everything in a shader
