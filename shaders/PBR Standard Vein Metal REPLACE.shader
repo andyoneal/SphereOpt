@@ -47,7 +47,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
             LOD 200
             Tags { "DisableBatching" = "true" "LIGHTMODE" = "FORWARDBASE" "RenderType" = "Opaque" "SHADOWSUPPORT" = "true" }
             Cull [_CullMode]
-            GpuProgramID 48911
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -466,7 +465,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                 
                 /* for reasons I don't understand, scale the metallic values to two different scales */
                 float metallicLow = metallic * 0.85 + 0.149; //scale metallic from 0.15 to 1.0
-                float metallicHigh = metallic * 0.85 + 0.649; //scale metallic from 0.65 to 1.5
+                float metallicHigh = metallicLow + 0.5; //scale metallic from 0.65 to 1.5
                 
                 /* the opposite of smoothness is roughness, but make it 3% rougher for some reason. */
                 float perceptualRoughness = 1 - smoothness * 0.97;
@@ -597,7 +596,6 @@ Shader "VF Shaders/Forward/PBR Standard Vein Metal REPLACE" {
                     light. Then, apply the calculated specular strength. */
                 float3 specularColor = _SpecularColor.xyz * lerp(float3(1.0, 1.0, 1.0), albedo, metallicLow);
                 specularColor = specularColor * lightColor;
-                float INV_TEN_PI = 0.0318309888;
                 specularColor = specularColor * nDotL * (specularTerm + INV_TEN_PI);
                 
                 /* Not sure what this is doing */
