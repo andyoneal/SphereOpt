@@ -97,7 +97,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float4 TBNW0 : TEXCOORD0; //o1
                 float4 TBNW1 : TEXCOORD1; //o2
                 float4 TBNW2 : TEXCOORD2; //o3
-                float4 worldSpherePos_power : TEXCOORD3; //o4
+                float4 worldSpherePos_WL : TEXCOORD3; //o4
                 float3 time_state_unk : TEXCOORD4; //o5 // x, z, w not used
                 float3 vertPos : TEXCOORD5; //o6
                 float4 worldPos_anim : TEXCOORD6; //o7
@@ -125,12 +125,10 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float objId = _Mono_Inst > 0 ? 0 : _InstBuffer[objIndex].objId; //r0.z
                 float3 pos = _Mono_Inst > 0 ? _Mono_Pos : _InstBuffer[objIndex].pos; //r1.xyz
                 float4 rot = _Mono_Inst > 0 ? _Mono_Rot : _InstBuffer[objIndex].rot; //r2.xyzw
-
+                
                 float time = _Mono_Inst > 0 ? _Mono_Anim_Time : _AnimBuffer[objId].time; //r0.w
-                float prepare_length = _Mono_Inst > 0 ? _Mono_Anim_LP : _AnimBuffer[objId].prepare_length; //r3.y
-                float working_length = _Mono_Inst > 0 ? _Mono_Anim_LW : _AnimBuffer[objId].working_length; //r3.x
+                o.worldSpherePos_WL.w = _Mono_Inst > 0 ? _Mono_Anim_LW : _AnimBuffer[objId].working_length;
                 uint state = _Mono_Inst > 0 ? _Mono_Anim_State : _AnimBuffer[objId].state; //r0.z
-                o.worldSpherePos_power.w = _Mono_Inst > 0 ? _Mono_Anim_Power : _AnimBuffer[objId].power;
 
                 float3 scale = _Mono_Inst > 0 ? _Mono_Scl : _ScaleBuffer[objIndex]; // r4.xyz
                 bool useScale = _UseScale > 0.5; //r3.y
@@ -139,12 +137,12 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float3 scaledNormal = useScale ? v.normal.xyz * scale.xyz : v.normal.xyz; //r3.yzw
                 float3 scaledTangent = v.tangent.xyz; //r4.yzw
 
-                animateWithVerta(vertexID, time, prepare_length, working_length, /*inout*/ scaledVertex, /*inout*/
+                animateWithVerta(vertexID, time, 1, 2, /*inout*/ scaledVertex, /*inout*/
                                            scaledNormal, /*inout*/ scaledTangent);
 
                 float3 worldPos = rotate_vector_fast(scaledVertex, rot) + pos; //r5.xyz
 
-                o.worldSpherePos_power.xyz = rotate_vector_fast(_SpherePos, rot) + pos;
+                o.worldSpherePos_WL.xyz = rotate_vector_fast(_SpherePos, rot) + pos;
 
                 float3 worldNormal = rotate_vector_fast(scaledNormal, rot); //r6.xyz
                 float3 worldTangent = rotate_vector_fast(scaledTangent, rot); //r0.yx + r1.x
@@ -229,10 +227,10 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
 
                 fout o;
 
-                float3 worldSpherePos = i.worldSpherePos_power.xyz;
+                float3 worldSpherePos = i.worldSpherePos_WL.xyz;
                 float3 worldPos = i.worldPos_anim.xyz;
                 float animTime = i.worldPos_anim.w;
-                float power = i.worldSpherePos_power.w;
+                float working_length = i.worldSpherePos_WL.w;
 
                 bool isGlassDome = i.vertPos.y > 4.0; //r0.x
 
@@ -244,7 +242,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float glassPartUInt = (uint)glassPart; //r0.z
 
                 float2 fluidTexUV;
-                fluidTexUV.x = power / 512.0 + (1.0 / 1024); // (2.0 * i.worldSpherePos_power.w + 1.0) / 1024.0 //r1.x
+                fluidTexUV.x = working_length / 512.0 + (1.0 / 1024); // (2.0 * i.worldSpherePos_WL.w + 1.0) / 1024.0 //r1.x
                 fluidTexUV.y = (0.5 + glassPartUInt) / 16.0; //r1.y
                 float3 fluidTex = tex2Dlod(_FluidTex, float4(fluidTexUV.xy, 0, 0)).xyz; //r1.xyz
 
@@ -259,6 +257,10 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float3 waterColor = float3(1,1,1);
 
                 float somethingRimRelated = 1.0;
+
+                float3 fromCenterDir = upDir.xyz;
+
+                float2 drops = float2(0, 0); //r10.yz
 
                 if (isGlassDome)
                 {
@@ -276,7 +278,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                     float innerSphereRadiusOffset = sqrt(0.0001 + pow(innerSphereRadius, 2.0) - pow(viewedDistFromCenter, 2.0)); //r4.w
                     
                     float3 camToPosDir = normalize(dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * outerSphereRadiusOffset); //r5.xyz
-                    float fromCenterDir = normalize((dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * outerSphereRadiusOffset) - camToSpherePos); //r6.xyz
+                    fromCenterDir = normalize((dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * outerSphereRadiusOffset) - camToSpherePos); //r6.xyz
                     float3 rayFromCenterToRim = dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * innerSphereRadiusOffset - camToSpherePos; //r7.xyz
 
                     float3 up = float3(0, 1, 0);
@@ -322,8 +324,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                     float normalTexOne = tex2Dlod(_NormalTex, float4(r11.yz, 0, 0)).y; //r5.w
                     float normalTexTwo = tex2Dlod(_NormalTex, float4(r11.xz, 0, 0)).y; //r6.w
                     float normalTex = normalTexTwo * 2.0 + normalTexOne * 2.0 - 1.0; //r5.w
-
-                    float2 drops = float2(0, 0);
+                    
                     if (waterHeight > 0)
                     {
                         float invWaterHeight = saturate(1.0 - waterHeight); //r6.w
@@ -464,7 +465,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                         {
                             if ((int)glassPart == 5)
                             {
-                                r11.x = (power / 512.0) + (1.0 / 1024.0);
+                                r11.x = (working_length / 512.0) + (1.0 / 1024.0);
                                 r11.y = (7.0 / 32.0);
                                 r4.yzw = tex2Dlod(_FluidTex, float4(r11.xy, 0, 0)).xyz;
 
@@ -512,8 +513,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                         }
                     }
                     
-                    fromCenterDir.xyz = upDir.xyz;
-                    r10.yz = float2(0, 0);
+                    
                     r0.w = animTime;
                     r7.y = 1;
                     r3.z = i.time_state_unk.y;
@@ -524,7 +524,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 r4.yz = r5.xy * float2(0.16, 0.16) + r4.yz;
 
                 r10.x = saturate(((lodScaleFactor / 50.0) - abs(r0.w)) * (50.0 / lodScaleFactor));
-                r10.yz = pow(r7.y, 2.0) * r4.yz + (1.0 - r7.y) * (r10.yz / 5.0);
+                r10.yz = pow(r7.y, 2.0) * r4.yz + (1.0 - r7.y) * (drops.xy / 5.0);
                 r11.x = 0;
                 r11.yz = float2(0.5, 0.5) * r5.xy;
                 r10.xyz = isGlassDome ? r10.xyz : r11.xyz;
@@ -546,7 +546,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                     if (i.time_state_unk.y > 0.5)
                     {
                         float fluidTex2UV;
-                        fluidTex2UV.x = power * (1.0 / 512.0) + (1.0 / 1024.0);
+                        fluidTex2UV.x = working_length * (1.0 / 512.0) + (1.0 / 1024.0);
                         fluidTex2UV.y = (19.0 / 32.0);
                         float3 fluidTex2 = tex2Dlod(_FluidTex, float4(fluidTex2UV.xy, 0, 0)).xyz; //r5.xzw
                         fluidTex2 = lerp(waterColor.xyz, fluidTex2, saturate(r5.y));
