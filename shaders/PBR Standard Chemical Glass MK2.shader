@@ -52,7 +52,6 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
 
             StructuredBuffer<float3> _ScaleBuffer; //t4
             StructuredBuffer<AnimData> _AnimBuffer; //t3
-            //StructuredBuffer<VertaData> _VertaBuffer; //t2 //floats in the code
             StructuredBuffer<float> _IdBuffer; // t1
             StructuredBuffer<GPUOBJECT> _InstBuffer; //t0
 
@@ -89,8 +88,47 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
             sampler2D _DropsTex;
             sampler2D _ScreenTexLate;
 
-            
+            float2 SampleNormalTex2D(float2 uv) {
+                float3 tex = tex2D(_NormalTex, uv.xy).xyw;
+                tex.x = tex.x * tex.z;
+                tex.xy = tex.xy * float2(2.0, 2.0) - float2(1.0, 1.0);
+                return tex;
+            }
 
+            float2 SampleNormalTex2DLOD(float2 uv) {
+                float3 tex = tex2Dlod(_NormalTex, float4(uv.xy,0,0)).xyw;
+                tex.x = tex.x * tex.z;
+                tex.xy = tex.xy * float2(2.0, 2.0) - float2(1.0, 1.0);
+                return tex;
+            }
+
+            float2 SampleDropsTex2DLOD(float2 uv) {
+                float3 tex = tex2Dlod(_DropsTex, float4(uv.xy,0,0)).xyw;
+                tex.x = tex.x * tex.z;
+                tex.xy = tex.xy * float2(2.0, 2.0) - float2(1.0, 1.0);
+                return tex;
+            }
+
+            float CalculateProjectedU(float2 rayToRim)
+            {
+                float minSize = min(abs(rayToRim.y), abs(rayToRim.x)); //r3.w
+                float maxSize = max(abs(rayToRim.y), abs(rayToRim.x)); //r4.w
+                float ratio = minSize / maxSize; //r3.w
+                float ratioSqr = pow(ratio, 2.0); //r4.w
+                float fallOff = ratioSqr * (ratioSqr * (ratioSqr * (ratioSqr * 0.0208351 - 0.085133) + 0.180141)
+                    - 0.3302995) + 0.999866; //r4.w
+
+                float sizeOne = abs(rayToRim.x) < abs(rayToRim.y) ? UNITY_HALF_PI - 2.0 * fallOff * ratio : 0; //r5.z
+                float sizeTwo = rayToRim.x < -rayToRim.x ? UNITY_PI : 0; //r4.w
+                float size = ratio * fallOff + sizeOne - sizeTwo; //r3.w
+
+                float minRadius2 = min(rayToRim.y, rayToRim.x); //r4.w
+                float maxRadius2 = max(rayToRim.y, rayToRim.x); //r5.x
+                size = minRadius2 < -minRadius2 && maxRadius2 >= -maxRadius2 ? -size : size; //r3.w
+
+                return size * UNITY_INV_TWO_PI;
+            }
+            
             struct v2f
             {
                 float4 pos : SV_POSITION;
@@ -114,8 +152,7 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float4 sv_target : SV_Target0;
             };
 
-            v2f vert(appdata_full v, uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
-            {
+            v2f vert(appdata_full v, uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID) {
                 float4 r0, r1, r4, r6, r7;
 
                 v2f o;
@@ -166,22 +203,20 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 r4.y = -unity_MatrixV[1].x;
                 r4.z = -unity_MatrixV[2].x;
                 r4.xyz = normalize(r4.xyz);
-
-
+                
                 r6.x = -unity_MatrixV[0].y;
                 r6.y = -unity_MatrixV[1].y;
                 r6.z = -unity_MatrixV[2].y;
                 r6.xyz = normalize(r6.xyz);
 
-
+                o.o10.x = dot(r4.xyz, worldNormal);
+                o.o10.y = dot(r6.xyz, worldNormal);
+                
                 r7.x = -unity_MatrixV[0].z;
                 r7.y = -unity_MatrixV[1].z;
                 r7.z = -unity_MatrixV[2].z;
                 r7.xyz = normalize(r7.xyz);
-
-                o.o10.x = dot(r4.xyz, worldNormal);
-                o.o10.y = dot(r6.xyz, worldNormal);
-
+                
                 float3 camToPos = normalize(worldPos.xyz - _WorldSpaceCameraPos.xyz); //r4.xyz
                 o.o10.z = dot(r7.xyz, camToPos.xyz);
 
@@ -221,20 +256,18 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 return o;
             }
             
-            fout frag(v2f i)
-            {
-                float4 r0, r1, r2, r3, r4, r5, r7, r8, r9, r10, r11, r12, r13;
-
+            fout frag(v2f i) {
                 fout o;
 
                 float3 worldSpherePos = i.worldSpherePos_WL.xyz;
                 float3 worldPos = i.worldPos_anim.xyz;
                 float animTime = i.worldPos_anim.w;
                 float working_length = i.worldSpherePos_WL.w;
+                float state = i.time_state_unk.y; // 0 or 1
 
                 bool isGlassDome = i.vertPos.y > 4.0; //r0.x
 
-                float glassPart = i.vertPos.y > 4.0 ? 0 : i.vertPos.x > 2.0 ? 5.0 : i.vertPos.z > 1.5 ? 2.0 : 3.0; //r0.y
+                float glassPart = isGlassDome ? 0.0 : (i.vertPos.x > 2.0 ? 5.0 : (i.vertPos.z > 1.5 ? 2.0 : 3.0)); //r0.y
                 //isGlassDome == 0
                 //isCurvedGlass == 5
                 //isFlatSidePanel == 2
@@ -242,48 +275,53 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 float glassPartUInt = (uint)glassPart; //r0.z
 
                 float2 fluidTexUV;
-                fluidTexUV.x = working_length / 512.0 + (1.0 / 1024); // (2.0 * i.worldSpherePos_WL.w + 1.0) / 1024.0 //r1.x
+                fluidTexUV.x = (working_length / 512.0) + (1.0 / 1024);
                 fluidTexUV.y = (0.5 + glassPartUInt) / 16.0; //r1.y
-                float3 fluidTex = tex2Dlod(_FluidTex, float4(fluidTexUV.xy, 0, 0)).xyz; //r1.xyz
+                float3 recipeColor = tex2Dlod(_FluidTex, float4(fluidTexUV.xy, 0, 0)).xyz; //r1.xyz
 
-                float3 upDir = normalize(worldSpherePos); //r2.xyz
-
-                float3 camToPos = worldPos - _WorldSpaceCameraPos.xyz; //r4.xyz
-                float distCamToPos = length(camToPos); // r0.w
-                float3 dirCamToPos = camToPos / distCamToPos; //r4.xyz
-
-                float lodScaleFactor = min(1.6, pow(max(1, distCamToPos / 20.0), 0.2)); // 5th sqrt //r1.w
+                float3 upDir = normalize(worldSpherePos); //r2.xyz //8.10814, 16.81796, 3.36858
+                float distCamToPos = distance(_WorldSpaceCameraPos.xyz, worldPos); // r0.w // //27.68412
+                float3 dirCamToPos = normalize(worldPos - _WorldSpaceCameraPos.xyz); //r4.xyz //(-0.73602, 0.24321, 0.63177)
+                float scaleByDistFromCam = min(1.6, pow(max(1, distCamToPos / 20.0), 0.2)); // 1.06719
+                // 0 to 20 = 1.0
+                // 20 to about 210 = log up from 1.0 to 1.6
+                // 210 and later = 1.6
 
                 float3 waterColor = float3(1,1,1);
-
-                float somethingRimRelated = 1.0;
-
-                float3 fromCenterDir = upDir.xyz;
-
+                float rimVisibility = 1.0;
+                float3 sphereNormal = upDir.xyz;
                 float2 drops = float2(0, 0); //r10.yz
+                float animWaterHeight = animTime;
+                float scaleDiamOffset = 1.0;
+                float alpha = 1.0;
+                float rimAngle = 1.0;
+                float2 rayCentToRim = float2(0, 0);
+                float sphereHasThickAndAboveCenter = state;
 
                 if (isGlassDome)
                 {
-                    float outerSphereRadius = 0.5 * _SpherePos.w; // r2.w
-                    float innerSphereRadius = 0.5 * (_SpherePos.w - _SphereThickness); //r3.z
+                    float outerSphereRadius = 0.5 * _SpherePos.w; // r2.w // 1.335
+                    float innerSphereRadius = 0.5 * (_SpherePos.w - _SphereThickness); //r3.z // 1.3
 
-                    float3 camToSpherePos = worldSpherePos - _WorldSpaceCameraPos.xyz; //r5.xyz
-                    float viewedDistFromCenter = distance(camToSpherePos, dirCamToPos * dot(dirCamToPos, camToSpherePos)); //r5.xyz
+                    float3 camToSpherePos = worldSpherePos - _WorldSpaceCameraPos.xyz; //r5.xyz // -21.3801, 7.58517, 17.90562
+                    float projSpherePosOnPos = dirCamToPos * dot(dirCamToPos, camToSpherePos); // dirCamToPos * 28.89306
+                    float viewedDistFromCenter = distance(camToSpherePos, projSpherePosOnPos); //r5.xyz // sqrt(dot(0.1143, -0.55816, 0.34805)) = 0.66765
                     
-                    viewedDistFromCenter = outerSphereRadius < viewedDistFromCenter.xyz ? outerSphereRadius : viewedDistFromCenter.xyz; //r4.w
-                    float outerSphereRadiusOffset = sqrt(0.0001 + pow(outerSphereRadius, 2.0) - pow(viewedDistFromCenter, 2.0)); //r2.w
-                    float rimStrengthUNK = saturate((outerSphereRadius - viewedDistFromCenter) * (800.0 / distCamToPos)); //r0.w
+                    viewedDistFromCenter = outerSphereRadius < viewedDistFromCenter ? outerSphereRadius : viewedDistFromCenter; //r4.w
+                    float outerSphereRadiusOffset = sqrt(0.0001 + pow(outerSphereRadius, 2.0) - pow(viewedDistFromCenter, 2.0)); //r2.w //1.1561 = sqrt(outerSphereRadius^2 - 0.44575^2)
                     
                     viewedDistFromCenter = innerSphereRadius < viewedDistFromCenter ? innerSphereRadius : viewedDistFromCenter;
-                    float innerSphereRadiusOffset = sqrt(0.0001 + pow(innerSphereRadius, 2.0) - pow(viewedDistFromCenter, 2.0)); //r4.w
-                    
-                    float3 camToPosDir = normalize(dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * outerSphereRadiusOffset); //r5.xyz
-                    fromCenterDir = normalize((dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * outerSphereRadiusOffset) - camToSpherePos); //r6.xyz
-                    float3 rayFromCenterToRim = dirCamToPos * dot(dirCamToPos, camToSpherePos) - dirCamToPos * innerSphereRadiusOffset - camToSpherePos; //r7.xyz
+                    float innerSphereRadiusOffset = sqrt(0.0001 + pow(innerSphereRadius, 2.0) - pow(viewedDistFromCenter, 2.0)); //r4.w // // 1.1155
+
+                    float3 rayCamtoOuterPos = projSpherePosOnPos - dirCamToPos * outerSphereRadiusOffset; //-20.41488, 6.74583, 17.52328 ??
+                    float3 rayCamToInnterPos = projSpherePosOnPos - dirCamToPos * innerSphereRadiusOffset;
+                    float3 camToPosDir = normalize(rayCamtoOuterPos); //r5.xyz // -0.73602, 0.24321, 0.63177
+                    sphereNormal = normalize(rayCamtoOuterPos - camToSpherePos); //r6.xyz //106.06351, 62.38314, -164.54601 -> 0.96522, -0.83934, -0.38234
+                    float3 rayFromCenterToRim = rayCamToInnterPos - camToSpherePos; //r7.xyz //106.03362, 62.39302, -164.52036 -> 0.93533, -0.82946, -0.35669??
 
                     float3 up = float3(0, 1, 0);
                     float3 yAxisTransform = upDir.xyz;
-                    float3 xAxisTransform = normalize(cross(yAxisTransform, up));
+                    float3 xAxisTransform = normalize(cross(upDir, up));
                     float3 zAxisTransform = cross(xAxisTransform, yAxisTransform);
 
                     float3 tmp;
@@ -292,318 +330,291 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                     tmp.z = dot(rayFromCenterToRim.xyz, zAxisTransform.xyz);
                     rayFromCenterToRim = tmp; //r8.xyz
 
+                    float sphereHeightOffsetFromCenter = rayFromCenterToRim.y; 
+
                     float3 rotatedCamToPosDir; //r7.xyz
                     rotatedCamToPosDir.x = dot(camToPosDir.xyz, xAxisTransform.xyz);
                     rotatedCamToPosDir.y = dot(camToPosDir.xyz, yAxisTransform.xyz);
                     rotatedCamToPosDir.z = dot(camToPosDir.xyz, zAxisTransform.xyz);
 
-                    float waterHeight = rayFromCenterToRim.y - animTime; //r3.w
+                    float animHeight = sphereHeightOffsetFromCenter - animTime; //r3.w
+
+                    alpha = saturate((outerSphereRadius - viewedDistFromCenter) * (800.0 / distCamToPos)); //r0.w
+                    alpha = sphereHeightOffsetFromCenter < -innerSphereRadius ? 0 : alpha; //alpha?
+
+                    float projU = CalculateProjectedU(rayFromCenterToRim.xy); //r0.w
+                    float sphereRadiusAtHeight = saturate(length(rayFromCenterToRim.xz) - 0.2); //r3.z
+
+                    float3 waterTexUV; //r11.xyz
+                    waterTexUV.x = projU - (_Time.y / 2.0);
+                    waterTexUV.y = sphereHeightOffsetFromCenter / 5.0;
+                    float normalTexOne = SampleNormalTex2DLOD(waterTexUV.xy).y;
+                    waterTexUV.x = projU + (_Time.y / 4.0);
+                    //waterTexUV.y = sphereHeight / 5.0;
+                    float normalTexTwo = SampleNormalTex2DLOD(waterTexUV.xy).y;
+                    float normalTex = normalTexOne + normalTexTwo; //r5.w
                     
-                    r9.w = rayFromCenterToRim.y < -innerSphereRadius ? 0 : rimStrengthUNK; //alpha?
-
-                    float minSizeSphere = min(abs(rayFromCenterToRim.z), abs(rayFromCenterToRim.x)); //r0.w
-                    float maxSizeSphere = max(abs(rayFromCenterToRim.z), abs(rayFromCenterToRim.x)); //r3.z
-                    float sphereRatio = minSizeSphere / maxSizeSphere; //r0.w
-
-                    float sphereRatioSqr = pow(sphereRatio, 2.0); //r3.z
-                    float sphereFallOff = sphereRatioSqr * (sphereRatioSqr * (sphereRatioSqr * (sphereRatioSqr * 0.0208351 - 0.085133) + 0.180141) -
-                        0.3302995) + 0.999866; // from 1 to 0.7854096 //r3.z
-
-                    r5.w = abs(rayFromCenterToRim.x) < abs(rayFromCenterToRim.z) ? UNITY_HALF_PI - 2.0 * sphereFallOff * sphereRatio : 0;
-                    r3.z = rayFromCenterToRim.x < -rayFromCenterToRim.x ? UNITY_PI : 0;
-                    r0.w = sphereRatio * sphereFallOff + r5.w - r3.z;
-                    r3.z = min(rayFromCenterToRim.z, rayFromCenterToRim.x);
-                    r5.w = max(rayFromCenterToRim.z, rayFromCenterToRim.x);
-                    r0.w = r3.z < -r3.z && r5.w >= -r5.w ? -r0.w : r0.w;
-
-                    r3.z = saturate(length(rayFromCenterToRim.xz) - 0.2);
-
-                    r11.x = r0.w * UNITY_INV_TWO_PI + 0.25 * _Time.y;
-                    r11.y = r0.w * UNITY_INV_TWO_PI - 0.5 * _Time.y;
-                    r11.z = 0.2 * rayFromCenterToRim.y;
-                    float normalTexOne = tex2Dlod(_NormalTex, float4(r11.yz, 0, 0)).y; //r5.w
-                    float normalTexTwo = tex2Dlod(_NormalTex, float4(r11.xz, 0, 0)).y; //r6.w
-                    float normalTex = normalTexTwo * 2.0 + normalTexOne * 2.0 - 1.0; //r5.w
+                    animWaterHeight = normalTex * sphereRadiusAtHeight * 0.13 + animHeight;
                     
-                    if (waterHeight > 0)
+                    if (animHeight > 0)
                     {
-                        float invWaterHeight = saturate(1.0 - waterHeight); //r6.w
+                        float2 adjustedRayFromCenterToRim = rotatedCamToPosDir.xz * 2.0 * innerSphereRadiusOffset + rayFromCenterToRim.xz; //r10.yz
+                        float projUDrops = CalculateProjectedU(adjustedRayFromCenterToRim.xy); //r7.w
+                        float adjustedDistFromCenterXZ = saturate(length(adjustedRayFromCenterToRim.xy) - 0.2); //r10.y
 
-                        r10.yz = rotatedCamToPosDir.xz * 2.0 * innerSphereRadiusOffset + rayFromCenterToRim.xz;
-                        
-                        float minSize = min(abs(r10.z), abs(r10.y)); //r7.w
-                        float maxSize = max(abs(r10.z), abs(r10.y)); // 1/r10.w
-                        float ratio = minSize / maxSize; // r7.w
-                        float ratioSqr = pow(ratio, 2.0); //r10.w
-                        float fallOff = ratioSqr * (ratioSqr * (ratioSqr * (ratioSqr * 0.0208351 - 0.085133) + 0.180141)
-                            - 0.3302995) + 0.999866; //r10.w
+                        float2 dropsUV; //r11.xy
+                        dropsUV.x = projU * 5.0;
+                        dropsUV.y = (animHeight + _Time.y) / 10.0;
+                        float2 dropsOne = SampleDropsTex2DLOD(dropsUV.xy); //r10.zw
+                        dropsOne.xy = dropsOne.xy * sphereRadiusAtHeight * saturate(2.0 - sphereHeightOffsetFromCenter);
 
-                        r11.x = abs(r10.y) < abs(r10.z) ? UNITY_HALF_PI - 2.0 * fallOff * ratio : 0;
-                        r10.w = r10.y < -r10.y ? UNITY_PI : 0;
-                        r7.w = ratio * fallOff + r11.x - r10.w;
+                        dropsUV.x = projUDrops * 5.0;
+                        //dropsUV.y = (animHeight + _Time.y) / 10.0;
+                        float2 dropsTwo = SampleDropsTex2DLOD(dropsUV.xz); //r11.xy
+                        dropsTwo.xy = dropsTwo.xy * adjustedDistFromCenterXZ;
+                        drops = dropsOne.xy + dropsTwo.xy;
 
-                        r10.w = min(r10.z, r10.y);
-                        r11.x = max(r10.z, r10.y);
-                        r7.w = r10.w < -r10.w && r11.x >= -r11.x ? -r7.w : r7.w;
-
-                        r10.y = saturate(length(r10.yz) - 0.2);
-
-                        r11.x = r7.w * 5.0 * UNITY_INV_TWO_PI;
-                        r11.y = r0.w * 5.0 * UNITY_INV_TWO_PI;
-                        r11.z = 0.1 * waterHeight + 0.1 * _Time.y;
-                        float3 dropsOne = tex2Dlod(_DropsTex, float4(r11.yz, 0, 0)).xyw; //r12.xyz
-                        dropsOne.x = dropsOne.x * dropsOne.z;
-                        dropsOne.xy = dropsOne.xy * float2(2, 2) - float2(1, 1); //r10.zw
-                        dropsOne.xy = dropsOne.xy * r3.zz * invWaterHeight * saturate(2.0 - rayFromCenterToRim.y);
-
-                        float3 dropsTwo = tex2Dlod(_DropsTex, float4(r11.xz, 0, 0)).xyw; //r11.xyz
-                        dropsTwo.x = dropsTwo.x * dropsTwo.z;
-                        dropsTwo.xy = dropsTwo.xy * float2(2, 2) - float2(1, 1);
-                        dropsTwo.xy = dropsTwo.xy * r10.yy * invWaterHeight;
-
-                        float dropsAnimTime = max(0, cos(_Time.y * 0.898 + 1.7)); // repeats every 7 seconds //r0.w
-                        drops = dropsAnimTime * (drops.xy + dropsTwo.xy);
+                        float dropsAnimTime = max(0, cos(_Time.y * 0.898 + 1.7));
+                        drops = drops * dropsAnimTime * saturate(1.0 - animHeight);
                     }
-
-                    r0.w = (normalTex - 1.0) * r3.z * 0.13 + waterHeight;
-                    r3.z = saturate(1.0 - r0.w);
                     
-                    float viewAngle = dot(-camToPosDir.xyz, upDir.xyz); //r5.x
+                    float3 viewDir = -camToPosDir;
+                    float viewAngle = dot(viewDir, upDir.xyz); //r5.x
                     bool viewFromAbove = viewAngle > 0.00001; //r5.y
-                    
-                    r11.w = (innerSphereRadiusOffset * 2.0 - (r0.w / viewAngle)) * 0.3 + (r0.w / viewAngle);
-                    r5.xyz = viewFromAbove ? rotatedCamToPosDir.xyz * r11.www + rayFromCenterToRim.xyz : rayFromCenterToRim.xyz;
-                    r5.w = viewFromAbove ? r11.w : outerSphereRadiusOffset * 2.0;
-                    
-                    r7.x = innerSphereRadiusOffset * 2.0 < r5.w ? 0 : 1.0;
-                    r7.y = innerSphereRadiusOffset * 2.0 < r5.w ? 0 : 0.05 + saturate(2.0 * (innerSphereRadiusOffset * 2.0 - r5.w));
-                    r7.z = r5.y;
-                    r7.xyz = r0.w > 0 ? r7.xyz : float3(1, 1, rayFromCenterToRim.y);
-
-                    //r6.xyz = normalize(r6.xyz);
-
-                    float2 normal = float2(0, 0);
-                    if (r7.x != 0)
+                    float3 adjustedRayFromCenterToRim;
+                    float innerSphereDiamOffset = innerSphereRadiusOffset * 2.0;
+                    float outerSphereDiamOffset = outerSphereRadiusOffset * 2.0;
+                    if (viewFromAbove)
                     {
-                        r5.xy = r0.w > 0 ? r5.zx : rayFromCenterToRim.zx;
-
-                        r2.w = length(r5.xy);
-
-                        float minSize = min(abs(r5.x), abs(r5.y)); //r3.w
-                        float maxSize = max(abs(r5.x), abs(r5.y)); //r4.w
-                        float ratio = minSize / maxSize; //r3.w
-                        float ratioSqr = pow(ratio, 2.0); //r4.w
-                        float fallOff = ratioSqr * (ratioSqr * (ratioSqr * (ratioSqr * 0.0208351 - 0.085133) + 0.180141)
-                            - 0.3302995) + 0.999866; //r4.w
-
-                        r5.z = abs(r5.y) < abs(r5.x) ? UNITY_HALF_PI - 2.0 * fallOff * ratio : 0;
-                        r4.w = r5.y < -r5.y ? UNITY_PI : 0;
-                        r3.w = ratio * fallOff + r5.z - r4.w;
-
-                        r4.w = min(r5.x, r5.y);
-                        r5.x = max(r5.x, r5.y);
-                        r3.w = r4.w < -r4.w && r5.x >= -r5.x ? -r3.w : r3.w;
-
-                        r8.x = r3.w * UNITY_INV_TWO_PI - 0.5 * _Time.y;
-                        r8.y = r7.z * 0.7 - UNITY_INV_TWO_PI * r3.w;
-                        r11.x = r3.w * UNITY_INV_TWO_PI + 0.49 * r2.w - _Time.y * 0.3;
-                        r11.y = 0.21 * r2.w + _Time.y * 0.3;
-                        r5.xy = r0.w < 0 ? r8.xy : r11.xy;
+                        float adjustedOffset = (innerSphereDiamOffset - (animWaterHeight / viewAngle)) * 0.3 + (animWaterHeight / viewAngle); //r11.w
+                        adjustedRayFromCenterToRim = rotatedCamToPosDir.xyz * adjustedOffset + rayFromCenterToRim.xyz; //r5.xyz
                         
-                        float3 normalTex2 = tex2Dlod(_NormalTex, float4(r5.xy, 0, 0)).xyw;  //r5.xyz
-                        normal.x = normalTex2.x * normalTex2.z;
-                        normal.xy = normal.xy * float2(2, 2) - float2(1, 1);
-                        normal.xy = normal.xy * min(1, 2.0 * r2.w);
+                        rayCentToRim.xy = adjustedRayFromCenterToRim.xy;
+                        
+                        sphereHasThickAndAboveCenter = innerSphereDiamOffset < adjustedOffset ? 0 : 1.0; //r7.x
+                        sphereHasThickAndAboveCenter = animWaterHeight > 0 ? sphereHasThickAndAboveCenter : 1.0;
+                    
+                        scaleDiamOffset = innerSphereDiamOffset < adjustedOffset ? 0 : 0.05 + saturate(2.0 * (innerSphereDiamOffset - adjustedOffset)); //r7.y
+                        scaleDiamOffset = animWaterHeight > 0 ? scaleDiamOffset : 1.0;
+                    }
+                    else
+                    {
+                        adjustedRayFromCenterToRim = rayFromCenterToRim.xyz; //r5.xyz
+                        
+                        rayCentToRim.xy = rayFromCenterToRim.xy;
+                        sphereHasThickAndAboveCenter = innerSphereDiamOffset < outerSphereDiamOffset ? 0 : 1.0; //r7.x
+                        sphereHasThickAndAboveCenter = animWaterHeight > 0 ? sphereHasThickAndAboveCenter : 1.0;
+                    
+                        scaleDiamOffset = innerSphereDiamOffset < outerSphereDiamOffset ? 0 : 0.05 + saturate(2.0 * (innerSphereDiamOffset - outerSphereDiamOffset)); //r7.y
+                        scaleDiamOffset = animWaterHeight > 0 ? scaleDiamOffset : 1.0;
+                    }
+                    
+                    if (sphereHasThickAndAboveCenter != 0)
+                    {
+                        
+                        float2 adjustedRayFromCenterToRim2 = animWaterHeight > 0 ? adjustedRayFromCenterToRim.xz : rayFromCenterToRim.xz; //r5.xy
+                        float adjustedRadiusAtHeight = length(adjustedRayFromCenterToRim2.xy); //r2.w
+                        float projU2 = CalculateProjectedU(adjustedRayFromCenterToRim2);
+                        float heightOffsetFromCenter = animWaterHeight > 0 ? rayCentToRim.y : sphereHeightOffsetFromCenter; //r7.z
+
+                        float2 waterUVOne;
+                        waterUVOne.x = projU2 - 0.5 * _Time.y; //r8.x
+                        waterUVOne.y = 0.7 * heightOffsetFromCenter - projU2; //r8.y
+
+                        float2 waterUVTwo;
+                        waterUVTwo.x = projU2 + 0.49 * adjustedRadiusAtHeight - 0.3 * _Time.y; //r11.x
+                        waterUVTwo.y = 0.21 * adjustedRadiusAtHeight + 0.3 * _Time.y; //r11.y
+                        
+                        float2 waterUV = animWaterHeight < 0 ? waterUVOne.xy : waterUVTwo.xy; //r5.xy
+                        float2 waterTex = SampleNormalTex2DLOD(waterUV.xy);
+                        rayCentToRim.xy = waterTex.xy * min(1.0, 2.0 * adjustedRadiusAtHeight);
                     }
 
-                    r2.w = pow(outerSphereRadiusOffset, 2.0) / lodScaleFactor;
-                    somethingRimRelated = saturate(_RimSoftness * (r2.w - _RimThickness)); //r3.w
-                    waterColor.xyz = fluidTex;
+                    rimAngle = pow(outerSphereRadiusOffset, 2.0) / scaleByDistFromCam;
+                    rimVisibility = saturate(_RimSoftness * (rimAngle - _RimThickness)); //r3.w
+                    waterColor.xyz = recipeColor;
                 }
                 else
                 {
                     float3 worldNormal = normalize(i.worldNormal.xyz); //r11.xyz
-
                     float nDotV = dot(-dirCamToPos, worldNormal.xyz); //r4.x
 
                     if ((int)glassPart == 1)
                     {
-                        r11.x = i.vertPos.z * 0.5 - 0.5 * i.vertPos.x;
-                        r11.y = i.vertPos.y * 0.5 - _Time.y;
-                        r4.w = tex2D(_NormalTex, r11.xy).y;
-                        r4.w = r4.w * 2.0 - 1.0;
+                        float2 waterUV; //r11.xy
+                        waterUV.x = 0.5 * i.vertPos.z - 0.5 * i.vertPos.x;
+                        waterUV.y = 0.5 * i.vertPos.y - _Time.y;
+                        float waterY = SampleNormalTex2D(waterUV.xy).y; //r4.w
 
-                        r11.x = _Time.y * 0.1 + 0.5 * i.vertPos.x + 0.2 * i.vertPos.z;
-                        r11.y = (i.vertPos.z * 0.2 - 0.3 * _Time.y) - i.vertPos.y * 0.2;
-                        r11.xyz = tex2D(_NormalTex, r11.xy).xyw;
-                        r11.x = r11.x * r11.z;
-                        r4.yz = r11.xy * float2(2, 2) - float2(1, 1);
+                        waterUV.x = 0.5 * i.vertPos.x + 0.2 * i.vertPos.z + 0.1 * _Time.y;
+                        waterUV.y = 0.2 * i.vertPos.z - 0.2 * i.vertPos.y - 0.3 * _Time.y;
+                        float2 waterTex = SampleNormalTex2D(waterUV); //r11.xy
+                        rayCentToRim.xy = waterTex.xy * (0.2 * scaleByDistFromCam) - float2(0.3, 0.3) * i.o10.xy;
                         
-                        r5.xy = r4.yz * (0.2 * lodScaleFactor) - float2(0.3, 0.3) * i.o10.xy;
+                        waterY = saturate(waterY * saturate(5.0 * (3.65 - i.vertPos.y)) + 1.15); //r4.y
+                        waterColor.xyz = lerp(recipeColor * float3(3, 3, 3) + float3(4, 4, 4), recipeColor, waterY);
                         
-                        r4.y = saturate(r4.w * saturate(5 * (3.65 - i.vertPos.y)) + 1.15);
-                        waterColor.xyz = lerp(fluidTex * float3(3, 3, 3) + float3(4, 4, 4), fluidTex, r4.y);
-                        
-                        r2.w = saturate(1.2 * nDotV);
-                        
-                        somethingRimRelated = saturate(2.0 * (r2.w - _RimThickness * 0.6) * _RimSoftness); //r3.w
-                        
-                        r7.x = i.time_state_unk.y;
+                        rimAngle = saturate(1.2 * nDotV);
+                        rimVisibility = saturate(2.0 * _RimSoftness * (rimAngle - 0.6 * _RimThickness)); //r3.w
                     }
                     else
                     {
                         if ((int)glassPart == 2)
                         {
-                            r1.xyz = float3(1, 1, 1); //fluidTex?
-                            waterColor.xyz = float3(1, 1, 1);
-                            r7.x = 0;
-                            r5.xy = float2(0, 0);
-                            r2.w = 1;
-                            somethingRimRelated = 1;
+                            recipeColor.xyz = float3(1, 1, 1); //fluidTex?
+                            sphereHasThickAndAboveCenter = 0;
                         }
                         else
                         {
-                            if ((int)glassPart == 5)
+                            if ((int)glassPart == 5) //curved glass
                             {
-                                r11.x = (working_length / 512.0) + (1.0 / 1024.0);
-                                r11.y = (7.0 / 32.0);
-                                r4.yzw = tex2Dlod(_FluidTex, float4(r11.xy, 0, 0)).xyz;
 
-                                r12.x = i.vertPos.x * 0.13 + 0.6 * _Time.y;
-                                r12.y = dot(i.vertPos.zy, float2(0.2, 1.2));
-                                float3 normalTex = tex2Dlod(_NormalTex, float4(r12.xy, 0, 0)).xyz; //r12.xyz
-                                normalTex.x = normalTex.x * normalTex.z;
-                                r12.x = normalTex.y * 2.0 + 0.3;
-                                r12.y = normalTex.x * 2.0 - 1.0;
-                                r12.z = normalTex.y * 2.0 - 1.0;
+                                float2 fluidCurvedUV; //r11.xy
+                                fluidCurvedUV.x = (working_length / 512.0) + (1.0 / 1024.0);
+                                fluidCurvedUV.y = (7.0 / 32.0);
+                                float3 curvedWaterColor = tex2Dlod(_FluidTex, float4(fluidCurvedUV.xy, 0, 0)).xyz; //r4.yzw
 
-                                r5.w = saturate((i.vertPos.y * 0.5 + 1.5) - i.vertPos.x);
+                                float2 waterCurvedUV; //r12.xy
+                                waterCurvedUV.x = i.vertPos.x * 0.13 + _Time.y * 0.6;
+                                waterCurvedUV.y = i.vertPos.z * 0.2 + i.vertPos.y * 1.2;
+                                float2 waterTex = SampleNormalTex2DLOD(waterCurvedUV.xy);
+                                
+                                curvedWaterColor = lerp(recipeColor, curvedWaterColor, saturate(waterTex.y * 0.8 + 0.3));
+                                curvedWaterColor = curvedWaterColor * (float3(10, 10, 10) - float3(9, 9, 9) * saturate(waterTex.y + 1.3));
 
-                                r13.x = i.vertPos.y * 0.8 - 0.3 * i.vertPos.z;
-                                r13.y = i.vertPos.x * 0.3 - 0.7 * _Time.y;
-                                r5.z = tex2D(_NormalTex, r13.xy).y;
-                                r5.z = r5.z * 2.0 - 1.0;
+                                float2 waterCurvedUV2;
+                                waterCurvedUV2.x = i.vertPos.y * 0.8 - i.vertPos.z * 0.3;
+                                waterCurvedUV2.y = i.vertPos.x * 0.3 - _Time.y * 0.7;
+                                float waterY = SampleNormalTex2D(waterCurvedUV2.xy).y;
+                                
+                                float3 adjustedCurvedWaterColor = curvedWaterColor * float3(4, 4, 4) + float3(3, 3, 3); //r11.xyz
+                                float waterHorzOffset = saturate((i.vertPos.y * 0.5 + 1.5) - i.vertPos.x); //r5.w
+                                curvedWaterColor = lerp(adjustedCurvedWaterColor, curvedWaterColor, saturate(waterY * waterHorzOffset + 1.2));
+                                curvedWaterColor = saturate(waterTex.y * waterTex.x - 0.1) * float3(210, 120, 300) + curvedWaterColor;
+                                waterColor.xyz = curvedWaterColor * waterHorzOffset + curvedWaterColor;
 
-                                r4.yzw = lerp(r1.xyz, r4.yzw, saturate(r12.z * 0.8 + 0.3));
-
-                                r11.x = i.vertPos.x * 0.2 + 0.8 * _Time.y;
-                                r11.y = i.vertPos.z * 0.3 + i.vertPos.y;
-                                r11.xyz = tex2D(_NormalTex, r11.xy).xyw;
-                                r11.x = r11.x * r11.z;
-                                r7.zw = r11.xy * float2(2, 2) - float2(1, 1);
-
-                                r4.yzw = r4.yzw * float3(10, 10, 10) - r4.yzw * float3(9, 9, 9) * saturate(r12.x);
-                                r11.xyz = r4.yzw * float3(4, 4, 4) + float3(3, 3, 3);
-                                r4.yzw = lerp(r11.xyz, r4.yzw, saturate(r5.z * r5.w + 1.2));
-                                r4.yzw = saturate(r12.z * r12.y - 0.1) * float3(210, 120, 300) + r4.yzw;
-
-                                waterColor.xyz = (1.0 + r5.w) * r4.yzw;
-                                r5.xy = r7.zw * 0.5 * lodScaleFactor + float2(0.1, 0.1) * i.o10.xy;
-                                r2.w = saturate(1.2 * nDotV);
-                                somethingRimRelated = saturate(dot(r2.w - _RimThickness * 0.6, _RimSoftness));
+                                float2 waterCurvedUV3; //r11.xy
+                                waterCurvedUV3.x = i.vertPos.x * 0.2 + _Time.y * 0.8;
+                                waterCurvedUV3.y = i.vertPos.z * 0.3 + i.vertPos.y;
+                                float2 waterTexCurved = SampleNormalTex2D(waterCurvedUV3.xy);
+                                rayCentToRim.xy = waterTexCurved.xy * 0.5 * scaleByDistFromCam + float2(0.1, 0.1) * i.o10.xy;
+                                
+                                rimAngle = saturate(1.2 * nDotV);
+                                rimVisibility = saturate(2.0 * _RimSoftness * (rimAngle - _RimThickness * 0.6));
                             }
                             else
                             {
-                                waterColor.xyz = r1.xyz; // fluidTex?
-                                r5.xy = float2(0, 0);
-                                r2.w = 1;
-                                somethingRimRelated = 1;
+                                waterColor.xyz = recipeColor.xyz; // fluidTex?
                             }
-                            r7.x = i.time_state_unk.y;
                         }
                     }
-                    
-                    
-                    r0.w = animTime;
-                    r7.y = 1;
-                    r3.z = i.time_state_unk.y;
-                    r9.w = 1;
                 }
 
-                r4.yz = r0.w < 0 ? float2(0.7, 0.7) * i.o10.xy : float2(0, -0.1);
-                r4.yz = r5.xy * float2(0.16, 0.16) + r4.yz;
-
-                r10.x = saturate(((lodScaleFactor / 50.0) - abs(r0.w)) * (50.0 / lodScaleFactor));
-                r10.yz = pow(r7.y, 2.0) * r4.yz + (1.0 - r7.y) * (drops.xy / 5.0);
-                r11.x = 0;
-                r11.yz = float2(0.5, 0.5) * r5.xy;
-                r10.xyz = isGlassDome ? r10.xyz : r11.xyz;
-                r10.w = r10.z * (_ScreenTexLate_TexelSize.z / _ScreenTexLate_TexelSize.w);
-
-                r3.x = (0.5 * (i.clipPos.x + i.clipPos.w)) / i.clipPos.w;
-                r3.y = (0.5 * (i.clipPos.w - i.clipPos.y)) / i.clipPos.w;
-                r3.xy = (i.clipPos.ww * (((i.time_state_unk.yy * r10.yw) / i.clipPos.ww) + r3.xy)) / i.clipPos.ww; //wtf
-                float3 screenTex = tex2D(_ScreenTexLate, r3.xy).xyz; //r4.xyz
-
+                float2 animScaleFactor;
+                if (isGlassDome)
+                {
+                    animScaleFactor = pow(scaleDiamOffset, 2.0) * float2(0.16, 0.16) * rayCentToRim.xy + (1.0 - scaleDiamOffset) * (drops.xy / 5.0);
+                    animScaleFactor = animWaterHeight < 0
+                        ? animScaleFactor + pow(scaleDiamOffset, 2.0) * float2(0.7, 0.7) * i.o10.xy
+                        : animScaleFactor + pow(scaleDiamOffset, 2.0) * float2(0, -0.1);
+                }
+                else
+                {
+                    animScaleFactor = float2(0.5, 0.5) * rayCentToRim.xy;
+                }
+                
+                float screenAspectRatio = _ScreenTexLate_TexelSize.z / _ScreenTexLate_TexelSize.w;
+                animScaleFactor.y = animScaleFactor.y * screenAspectRatio;
+                
+                float2 screenTexCoordsUV;
+                float4 clipPos = i.clipPos;
+                screenTexCoordsUV.x = 0.5 * clipPos.x + 0.5 * clipPos.w;
+                screenTexCoordsUV.y = 0.5 * clipPos.w - 0.5 * clipPos.y;
+                screenTexCoordsUV.xy = (state * animScaleFactor + screenTexCoordsUV.xy) / clipPos.ww;
+                screenTexCoordsUV.xy = (clipPos.ww * screenTexCoordsUV.xy) / clipPos.ww;
+                float3 screenTex = tex2D(_ScreenTexLate, screenTexCoordsUV.xy).xyz; //r4.xyz
+                
                 float smoothness = 0.01; //r8.y
                 float metallic = 0.01; // r8.x
-                float3 albedo = r4.xyz; // r7.yzw
+                float3 albedo = screenTex.xyz; // r7.yzw
                 float3 specularColor = float3(0, 0, 0); //r3.xyw
-                if (r9.w > 0.001)
+                float rimColor = float3(0,0,0);
+                float rimAlpha = 0;
+                
+                if (alpha > 0.001)
                 {
-                    r1.w = 1.0 - somethingRimRelated;
-                    
-                    if (i.time_state_unk.y > 0.5)
+                    bool isProducing = state > 0.5;
+                    if (isProducing)
                     {
                         float fluidTex2UV;
-                        fluidTex2UV.x = working_length * (1.0 / 512.0) + (1.0 / 1024.0);
+                        fluidTex2UV.x = (working_length / 512.0) + (1.0 / 1024.0);
                         fluidTex2UV.y = (19.0 / 32.0);
                         float3 fluidTex2 = tex2Dlod(_FluidTex, float4(fluidTex2UV.xy, 0, 0)).xyz; //r5.xzw
-                        fluidTex2 = lerp(waterColor.xyz, fluidTex2, saturate(r5.y));
-                        fluidTex2 = isGlassDome ? fluidTex2 : waterColor.xyz;
-                        
-                        r3.y = isGlassDome ? _RimColor.x : waterColor.x;
-                        albedo = lerp(r3.yyy, float3(1.2, 1.2, 1.2) - r3.zzz * (float3(1.2, 1.2, 1.2) + fluidTex2), somethingRimRelated);
 
-                        smoothness = (int)glassPart == 2 ? 0.5 : _Smoothness;
+                        float glassFactor = 0.03;
 
-                        r3.y = r10.x * 4.0 + r3.z;
-                        r4.w = isGlassDome ? 1.0 : min(1.0, 0.1 + saturate(0.3 + dot(upDir.xyz, _Global_SunDir.xyz)));
-                        r10.xyz = float3(0.2, 0.2, 0.2) * fluidTex2 * r3.yyy * r4.www * min(1, 10 * somethingRimRelated);
+                        if(isGlassDome)
+                        {
+                            fluidTex2 = lerp(waterColor, fluidTex2, saturate(rayCentToRim.y));
+                            
+                            albedo = lerp(_RimColor.xxx, float3(1.2, 1.2, 1.2) - saturate(1.0 - animWaterHeight) * (float3(1.2, 1.2, 1.2) + fluidTex2), rimVisibility);
+                            smoothness = _Smoothness;
+                            
+                            float colorFactor = 4.0 * saturate(1.0 - (50.0 * abs(animWaterHeight) / scaleByDistFromCam)); //r10.x
+                            colorFactor = colorFactor + saturate(1.0 - animWaterHeight); //r3.y
+                            rimColor = float3(0.2, 0.2, 0.2) * fluidTex2 * colorFactor * min(1, 10 * rimVisibility);
+                            glassFactor = saturate((rayCentToRim.y * 0.5 + 0.5) * (animWaterHeight - 50.0)) * 0.14 + 0.08; //r0.x
+                        }
+                        else
+                        {
+                            fluidTex2 = waterColor.xyz;
+                            
+                            albedo = lerp(waterColor.xxx, float3(1.2, 1.2, 1.2) - state * (float3(1.2, 1.2, 1.2) + waterColor), rimVisibility);
+                            smoothness = (int)glassPart == 2 ? 0.5 : _Smoothness;
+                            
+                            float sunAngle = min(1.0, 0.1 + saturate(0.3 + dot(upDir.xyz, _Global_SunDir.xyz))); //r4.w
+                            rimColor = float3(0.2, 0.2, 0.2) * waterColor * state * sunAngle * min(1, 10 * rimVisibility);
+                        }
                         
-                        r0.x = isGlassDome ? saturate((r5.y * 0.5 + 0.5) * (r0.w - 50.0)) * 0.14 + 0.08 : 0.03;
-                        r5.xyz = fluidTex2 * (screenTex.xyz * float3(2.5, 2.5, 2.5) + r0.xxx);
-                        r4.xyz = lerp(screenTex.xyz, r5.xyz, r7.x * r7.y);
+                        float3 glassAndFluid = fluidTex2 * (screenTex * float3(2.5, 2.5, 2.5) + glassFactor); //r5.xyz
+                        screenTex.xyz = lerp(screenTex, glassAndFluid, sphereHasThickAndAboveCenter * albedo.y);
+                        specularColor = _SpecularColor;
 
-                        r0.x = 1.0 - saturate(1.0 - _RimColor.w) * (1.0 - r1.w);
-                        r0.x = (int)glassPart == 2 ? 1.0 : r0.x;
-                        r0.x = r7.x < 0.5 && (int)glassPart == 2 ? 0.1 : r0.x;
-                        
-                        specularColor.xyz = _SpecularColor.xyz;
+                        if ((int)glassPart == 2)
+                        {
+                            rimAlpha = sphereHasThickAndAboveCenter < 0.5 ? 0.1 : 1.0;
+                        }
+                        else
+                        {
+                            rimAlpha = 1.0 - (1.0 - (1.0 - rimVisibility)) * saturate(1.0 - _RimColor.w);
+                        }
                     }
                     else
                     {
                         smoothness = 0.7 * _Smoothness;
-                        specularColor.xyz = float3(0.4, 0.4, 0.4) * _SpecularColor.xyz;
-                        r4.xyz = float3(0.5, 0.5, 0.5) * r4.xyz;
-                        
-                        r0.w = 1.0 - (1.0 - r1.w) * saturate(1.0 - _RimColor.w) * 0.2;
-                        r0.w = (int)glassPart == 2 ? 1 : r0.w;
-                        
-                        r0.x = (int)glassPart == 2 && r7.x < 0.5 ? 0.1 : r0.w;
-                        
+                        specularColor = float3(0.4, 0.4, 0.4) * _SpecularColor.xyz;
+                        screenTex = float3(0.5, 0.5, 0.5) * screenTex;
                         albedo = float3(0.3, 0.3, 0.3);
-                        r10.xyz = float3(0, 0, 0);
+                        
+                        if ((int)glassPart == 2)
+                        {
+                            rimAlpha = sphereHasThickAndAboveCenter < 0.5 ? 0.1 : 1.0;
+                        }
+                        else
+                        {
+                            rimAlpha = 1.0 - (1.0 - (1.0 - rimVisibility)) * saturate(1.0 - _RimColor.w) * 0.2; //r0.w
+                        }
                     }
                     
                     metallic = _Metallic;
                 }
-                else
-                {
-                    r1.xyz = float3(0, 0, 0); // fluidTex?
-                    r10.xyz = float3(0, 0, 0);
-                    r3.z = 0;
-                    r0.x = 0;
-                }
                 
                 UNITY_LIGHT_ATTENUATION(atten, inp, worldPos); //r1.w = atten
-                //r1.w = saturate(dot(r5.xyzw, unity_OcclusionMaskSelector.xyzw));
 
                 float upDotL = dot(upDir.xyz, _WorldSpaceLightPos0.xyz); //r0.y
-
                 float3 sunsetColor = calculateSunlightColor(_LightColor0.xyz, upDotL, _Global_SunsetColor0.xyz, _Global_SunsetColor1.xyz, _Global_SunsetColor2);
 
-                if (r9.w < 0.05) discard;
+                if (alpha < 0.05) discard;
 
                 float3 worldPos_2; //r12.xyz
                 worldPos_2.x = i.TBNW0.w;
@@ -624,23 +635,21 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
 
                 float roughness = pow(perceptualRoughness, 2.0); //r0.w
 
-                worldNormal.xyz = glassPartUInt < 0.5 ? fromCenterDir.xyz : worldNormal.xyz; //r6 == sphereNormal?
+                worldNormal.xyz = glassPartUInt < 0.5 ? sphereNormal.xyz : worldNormal.xyz;
                 float unclamped_nDotL = dot(worldNormal.xyz, _WorldSpaceLightPos0.xyz); //r6.x
                 float nDotV = max(0, dot(worldNormal.xyz, viewDir.xyz)); //r6.z
                 float nDotL = max(0, unclamped_nDotL); //r6.y
-                
                 float nDotH = max(0, dot(worldNormal.xyz, halfDir.xyz)); //r8.w
                 float vDotH = max(0, dot(viewDir.xyz, halfDir.xyz)); //r8.x
-
                 float nDotUp = dot(worldNormal.xyz, upDir.xyz); // r8.y
 
                 float reflectivity; //r5.x
                 float3 reflectColor = reflection(perceptualRoughness, metallicLow, upDir, viewDir, worldNormal, /*out*/ reflectivity); //r5.yzw
 
-                float reflectLum = dot(reflectColor.xyz, float3(0.3, 0.6, 0.1)); //r8.z
-                reflectColor.xyz = (reflectLum - upDir * reflectivity) * float3(0.5, 0.5, 0.5) + reflectColor.xyz;
-                reflectColor.xyz = r7.xxx ? float3(1, 1, 1) / rsqrt(reflectColor.xyz) : reflectColor.xyz;
-                reflectColor.xyz = lerp(reflectColor.xyz, reflectColor.xyz * r1.xyz, 0.5);
+                float reflectLum = dot(reflectColor, float3(0.3, 0.6, 0.1)); //r8.z
+                reflectColor = (reflectLum - upDir * reflectivity) * float3(0.5, 0.5, 0.5) + reflectColor;
+                reflectColor = sphereHasThickAndAboveCenter ? sqrt(reflectColor) : reflectColor;
+                reflectColor = float3(0.5,0.5,0.5) * reflectColor * (1.0 + recipeColor);
                 
                 atten = lerp(atten, 1.0, saturate(0.15 * upDotL));
                 float3 lightColor = (0.8 * atten) * sunsetColor.xyz; //r5.yzw
@@ -662,46 +671,45 @@ Shader "VF Shaders/Forward/PBR Standard Chemical Glass MK2" {
                 specularColor = specularColor * specColorMod; //r3.xyw
                 
                 ambientLightColor = ambientLightColor * albedo * (1.0 - metallicLow * 0.6); // r5.yzw
+                
+                float3 recipeLightColor;
+                if(isGlassDome)
+                {
+                    float somethingStateRelated = alpha > 0.0001 ? (isGlassDome ? saturate(1.0 - animWaterHeight) : state) : 0.0;
+                    float lightAngle = pow(somethingStateRelated, 8.0) * saturate(1.0 - (0.4 + upDotL) * 3.0); //r0.w // somethingStateRelated altered in last if statement
+                    float rimLightFactor = min(1.0, (1.0 - abs(saturate(_RimSoftness * rimAngle) - 0.5)) * nDotH); //r0.w
+                    float3 rimLight = _RimColor.xyz * (pow(rimLightFactor, 10) * 8.0 + 1.2); //r13.xyz
+                    recipeLightColor = lerp(rimLight, 25.0 * recipeColor, lightAngle); //r1.xyz    
+                }
+                else
+                {
+                    recipeLightColor = float3(0.15, 0.15, 0.15) * recipeColor; //r1.xyz
+                }
 
-                r0.w = saturate(_RimSoftness * r2.w);
-                r1.w = saturate(_RimSoftness * (r2.w - _RimThickness));
-                r2.w = min(1.0, 0.9 + r1.w);
-                
-                r0.w = min(1, (1.0 - abs(r0.w - 0.5)) * nDotH);
-                r13.xyz = _RimColor.xyz * (pow(r0.w, 10) * 8.0 + 1.2);
-                r0.w = pow(r3.z, 8.0) * saturate(1.0 - (0.4 + upDotL) * 3.0);
-                r1.xyz = glassPartUInt > 0.5 ? float3(0.15, 0.15, 0.15) * r1.xyz : lerp(r13.xyz, 25.0 * r1.xyz, r0.w);
-                
-                float ambientLightLum = dot(ambientLightColor, float3(0.3, 0.6, 0.1)); //r0.z
-                
+                rimVisibility = saturate(_RimSoftness * (rimAngle - _RimThickness)); //r1.w
                 float ambientColorLum = 0.003 + dot(ambientColor.xyx, float3(0.3, 0.6, 0.1)); // r0.w
                 float maxAmbient = 0.003 + max(_Global_AmbientColor0.z, max(_Global_AmbientColor0.x, _Global_AmbientColor0.y)); //r3.z
-                reflectColor.xyz = reflectColor.xyz * float3(1.7, 1.7, 1.7) * lerp(ambientColorLum, ambientColor.xyz, 0.4) / maxAmbient;
+                reflectColor = reflectColor * float3(1.7, 1.7, 1.7) * lerp(ambientColorLum, ambientColor, 0.4) / maxAmbient;
                 float reflectStrength = saturate(upDotL * 2.0 + 0.5) * 0.7 + 0.3; //r0.y
-                reflectColor.xyz = reflectColor.xyz * reflectStrength;
-                
-                r0.yzw = nDotL * lightColor * albedo * pow(1.0 - metallicLow, 0.6) + specularColor + ambientLightLum;
+                reflectColor = reflectColor * reflectStrength * lerp(albedo, float3(1, 1, 1), rimVisibility);
 
-                r5.yzw = lerp(albedo, float3(1, 1, 1), r1.www);
-                r0.yzw = lerp(r0.yzw, reflectColor.xyz * r5.yzw, reflectivity);
+                float ambientLightLum = dot(ambientLightColor, float3(0.3, 0.6, 0.1)); //r0.z
+                float3 finalColor = nDotL * lightColor * albedo * pow(1.0 - metallicLow, 0.6) + specularColor + ambientLightLum; //r0.yzw
+                finalColor = lerp(finalColor, reflectColor, reflectivity); //r0.yzw
 
-                r2.xyz = saturate(_LightColor0.xyz * sunsetColor.xyz + float3(0.5, 0.5, 0.5));
-                r3.xyz = saturate(specularColor * float3(0.2, 0.2, 0.2) - float3(0.05, 0.05, 0.05));
-                r0.yzw = lerp(r1.xyz * r2.xyz + r3.xyz, r0.yzw, r2.www);
-                r0.xyz = lerp(r4.xyz, r0.yzw, r0.xxx);
+                sunsetColor = saturate(sunsetColor + float3(0.5, 0.5, 0.5)); //r2.xyz
+                specularColor = saturate(specularColor * float3(0.2, 0.2, 0.2) - float3(0.05, 0.05, 0.05)); //r3.xyz
+                finalColor = lerp(recipeLightColor * sunsetColor + specularColor, finalColor, min(1.0, 0.9 + rimVisibility));
+                finalColor = lerp(screenTex, finalColor, rimAlpha);
 
-                r0.w = dot(r0.xyz, float3(0.3, 0.6, 0.1));
-                r1.x = r0.w > 1;
-                r1.yzw = r0.xyz / r0.www;
-                r0.w = log(log(r0.w) + 1.0) + 1.0;
-                r9.xyz = r1.xxx ? r1.yzw * r0.www : r0.xyz;
-                
-                r0.xyz = i.indirectLight.xyz * albedo;
-                r0.w = 0;
-                r0.xyzw = r0.xyzw + r9.xyzw;
+                float luminance = dot(finalColor, float3(0.3, 0.6, 0.1)); //r0.w
+                float3 normalizedColor = finalColor / luminance;
+                float logLum = log(log(luminance) + 1.0) + 1.0;
+                finalColor = luminance > 1.0 ? normalizedColor * logLum : finalColor;
+                finalColor = i.indirectLight.xyz * albedo + finalColor;
 
-                o.sv_target.xyz = r0.xyz + r10.xyz;
-                o.sv_target.w = r0.w;
+                o.sv_target.xyz = finalColor + rimColor;
+                o.sv_target.w = alpha;
 
                 return o;
             }
