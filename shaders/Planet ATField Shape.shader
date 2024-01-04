@@ -58,22 +58,23 @@ Shader "Unlit/Planet ATField Shape" {
                 float shieldPowerPct = 0; //r1.w
                 
                 for(int i = 0; i < asuint(_GeneratorCount); i++) {
-                    if (_GeneratorMatrix[i].w < 0.001) {
+                    float thisGenShieldPower = _GeneratorMatrix[i].w;
+                    float3 thisGenShieldPos = _GeneratorMatrix[i].xyz;
+                    
+                    if (thisGenShieldPower < 0.001) {
                       continue;
                     }
                     
-                    float3 rayGenToGroundPosOfShield = normal.xyz * _PlanetRadius - _GeneratorMatrix[i].xyz; //r2.yzw
+                    float3 rayGenToGroundPosOfShield = normal.xyz * _PlanetRadius - thisGenShieldPos; //r2.yzw
                     
-                    float invDistPctFromCenter = length(rayGenToGroundPosOfShield) / (_GeneratorMatrix[i].w * halfRadius); //r2.y
+                    float invDistPctFromCenter = length(rayGenToGroundPosOfShield) / (thisGenShieldPower * halfRadius); //r2.y
                     float falloff = lerp(1.0 - pow(invDistPctFromCenter, 2), 1.0 - invDistPctFromCenter, saturate(invDistPctFromCenter));
-                    falloff = falloff * _GeneratorMatrix[i].w;
+                    falloff = falloff * thisGenShieldPower;
                     
-                    r2.w = _K * (_GeneratorMatrix[i].w / 4.0 + 0.75);
+                    float kPower = _K * (thisGenShieldPower / 4.0 + 0.75); //r2.w
+                    float powerFactor = saturate(0.5 - ((0.5 * (falloff - shieldPowerPct)) / kPower));
                     
-                    r3.x = (falloff - shieldPowerPct) / 2.0;
-                    r3.x = saturate(0.5 - (r3.x / r2.w));
-                    
-                    shieldPowerPct = r3.x * r2.w * lerp(falloff, shieldPowerPct, r3.x);
+                    shieldPowerPct = powerFactor * kPower * lerp(falloff, shieldPowerPct, powerFactor);
                 }
                 
                 shieldPowerPct = saturate(shieldPowerPct);
