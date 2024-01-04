@@ -21,7 +21,7 @@ Shader "Unlit/Planet ATField Shape" {
             #pragma fragment frag
             #pragma target 5.0
             
-            #include "UnityCG.cginc"
+            #include "../../../Downloads/builtin_shaders-2018/CGIncludes/UnityCG.cginc"
             
             struct v2f
             {
@@ -78,7 +78,7 @@ Shader "Unlit/Planet ATField Shape" {
                 }
                 
                 shieldPowerPct = saturate(shieldPowerPct);
-                shieldPowerPct = pow(pow(r1.w, 2) * (3.0 - 2.0 * r1.w), 3); //r2.
+                shieldPowerPct = pow(pow(shieldPowerPct, 2) * (3.0 - 2.0 * shieldPowerPct), 3); //r2.
                 float shieldHeight = _PlanetRadius + _FieldAltitude * shieldPowerPct;
                 
                 float3 worldPos = normal.xyz * shieldHeight; //r0.xyz
@@ -91,28 +91,28 @@ Shader "Unlit/Planet ATField Shape" {
                 return o;
             }
             
-            fout frag(v2f inp)
+            fout frag(v2f i)
             {
                 fout o;
                 
-                if (shieldPowerPct < 0.01)
+                if (i.shieldPowerPct < 0.01)
                     discard;
                 
-                if (length(worldPos.xyz) < 202.5)
+                if (length(i.worldPos.xyz) < 202.5)
                     discard;
                 
-                float lowColorFactor = 2.0 * (shieldPowerPct - 0.1);
+                float lowColorFactor = 2.0 * (i.shieldPowerPct - 0.1);
                 float4 colorLowPower = lerp(_Color1.xyzw, _Color2.xyzw, lowColorFactor);
                 
-                float highColorFactor = pow(saturate(2.5 * (shieldPowerPct - 0.6)), 2); // 0 until x= 0.6, then exp up to 1
+                float highColorFactor = pow(saturate(2.5 * (i.shieldPowerPct - 0.6)), 2); // 0 until x= 0.6, then exp up to 1
                 float4 colorHighPower = lerp(_Color2.xyzw, _Color3.xyzw, highColorFactor);
                 
-                float4 color = shieldPowerPct < 0.6 ? colorLowPower : colorHighPower;
+                float4 color = i.shieldPowerPct < 0.6 ? colorLowPower : colorHighPower;
                 
-                float transparentFactor = smoothstep(0.052, 0.1, shieldPowerPct); //r0.y
+                float transparentFactor = smoothstep(0.052, 0.1, i.shieldPowerPct); //r0.y
                 color = lerp(_Color0.xyzw, color.xyzw, transparentFactor);
                 
-                float finalColorFactor = smoothstep(0.995, 0.99999995, shieldPowerPct);
+                float finalColorFactor = smoothstep(0.995, 0.99999995, i.shieldPowerPct);
                 color = lerp(color.xyzw, _Color4.xyzw, finalColorFactor);
                 
                 o.sv_target.xyz = color.xyz;
