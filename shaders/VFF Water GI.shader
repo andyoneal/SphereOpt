@@ -35,35 +35,35 @@ Shader "VF Shaders/Forward/VFF Water GI" {
         }
         Pass {
             Tags { "DisableBatching" = "true" "IGNOREPROJECTOR" = "true" "QUEUE" = "Transparent-10" }
-            GpuProgramID 15630
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 5.0
             #pragma enable_d3d11_debug_symbols
-            
-            #include "UnityCG.cginc"
+
+            #include "../../Downloads/builtin_shaders-2018/CGIncludes/UnityCG.cginc"
+
             struct v2f
-            {   
-                float4 pos : SV_POSITION0;
+            {
+                float4 position : SV_POSITION0;
                 float3 normal : NORMAL0;
                 float3 tangent : TANGENT0;
-                float3 binormal : TEXCOORD2;
+                float3 bitangent : TEXCOORD2;
                 float3 worldPos : TEXCOORD0;
                 float4 clipPos : TEXCOORD1;
             };
-            
+
             struct fout
             {
                 float4 sv_target : SV_Target0;
             };
-            
-            float4 _Global_WaterAmbientColor0;
-            float4 _Global_WaterAmbientColor1;
-            float4 _Global_WaterAmbientColor2;
+
             float4 _Global_SunsetColor0;
             float4 _Global_SunsetColor1;
             float4 _Global_SunsetColor2;
+            float4 _Planet_WaterAmbientColor0;
+            float4 _Planet_WaterAmbientColor1;
+            float4 _Planet_WaterAmbientColor2;
             float4 _Color;
             float4 _Color1;
             float4 _Color2;
@@ -92,353 +92,273 @@ Shader "VF Shaders/Forward/VFF Water GI" {
             float _Global_WhiteMode0;
             float4 _ScreenTex_TexelSize;
             float4 _Global_SunDir;
+            float _GlobalWhiteMode0;
 
             sampler2D _BumpTex;
             sampler2D _CameraDepthTexture;
             sampler2D _CausticsTex;
             sampler2D _ScreenTex;
             samplerCUBE _GITex;
-            
+
             v2f vert(appdata_full v) {
-              v2f o;
-              
-              float3 worldPos = mul(unity_ObjectToWorld, float4(v.vertex.xyz, 1)).xyz; //r0.xyz
-              
-              float distCamToVert = distance(_WorldSpaceCameraPos, worldPos);
-              float scale = saturate((distCamToVert - 10000) / 10000);
-              float3 scaledVertPos = (normalize(v.vertex.xyz) * scale) / 800.0;
-              float3 vertPos = v.vertex.xyz + scaledVertPos; //if camera is far away, increase size by a tiny bit?
-              
-              float4 clipPos = UnityObjectToClipPos(vertPos); //r0.xyzw
-              float3 worldNormal = UnityObjectToWorldNormal(v.normal.xyz); //r0.xyz
-              float3 worldTangent = UnityObjectToWorldDir(v.tangent.xyz); //r1.xyz
-              
-              o.pos.xyzw = clipPos;
-              o.normal.xyz = worldNormal;
-              o.tangent.xyz = worldTangent.xyz;
-              o.binormal.xyz = normalize(cross(worldNormal, worldTangent));
-              o.worldPos.xyz = worldPos;
-              o.clipPos.xyzw = clipPos;
-              
-              return o;
+                v2f o;
+
+                float3 worldPos = mul(unity_ObjectToWorld, float4(v.vertex.xyz, 1)).xyz;
+                o.worldPos.xyz = worldPos;
+
+                float camDistance = distance(_WorldSpaceCameraPos, worldPos); //r0.x
+                float distanceScale = saturate((camDistance - 10000.0) / 10000.0); //r0.x
+
+                float3 upDir = normalize(v.vertex.xyz); //r0.yzw
+                float3 offset = (distanceScale * upDir) / 800.0;
+                float3 offsetVertPos = offset + v.vertex.xyz; //r0.xyz
+                float4 offsetWorldPos = mul(unity_ObjectToWorld, float4(offsetVertPos, 1)); //r0.xyzw
+                float4 clipPos = mul(unity_MatrixVP, offsetWorldPos); //r0
+
+                o.position = clipPos;
+                o.clipPos = clipPos;
+
+                float3 worldNormal = normalize(mul(v.normal.xyz, (float3x3)unity_WorldToObject)); //r0.xyz
+                o.normal.xyz = worldNormal.xyz;
+
+                float3 worldTangent = normalize(mul((float3x3)unity_ObjectToWorld, v.tangent.xyz)); //r1
+                o.tangent.xyz = worldTangent.xyz;
+
+                o.bitangent.xyz = normalize(worldNormal.yzx * worldTangent.zxy - worldNormal.zxy * worldTangent.yzx);
+
+                return o;
             }
-            
-            fout frag(v2f inp)
-            {
+
+            fout frag(v2f inp) {
                 fout o;
-                float4 tmp0;
-                float4 tmp1;
-                float4 tmp2;
-                float4 tmp3;
-                float4 tmp4;
-                float4 tmp5;
-                float4 tmp6;
-                float4 tmp7;
-                float4 tmp8;
-                float4 tmp9;
-                float4 tmp10;
-                float4 tmp11;
-                float4 tmp12;
-                float4 tmp13;
-                float4 tmp14;
-                tmp0.xz = inp.texcoord1.xw * float2(0.5, 0.5);
-                tmp0.y = inp.texcoord1.y * _ProjectionParams.x;
-                tmp0.w = tmp0.y * 0.5;
-                tmp0.xy = tmp0.zz + tmp0.xw;
-                tmp0.xy = tmp0.xy / inp.texcoord1.ww;
-                tmp1 = tex2D(_CameraDepthTexture, tmp0.xy);
-                tmp0.w = _ZBufferParams.z * tmp1.x + _ZBufferParams.w;
-                tmp0.w = 1.0 / tmp0.w;
-                tmp0.w = tmp0.w - inp.texcoord1.w;
-                tmp0.w = max(tmp0.w, 0.0);
-                tmp1.x = tmp0.w <= 0.0;
-                if (tmp1.x) {
-                    discard;
+
+                float4 r1;
+                float4 r2;
+                float4 r3;
+                float4 r4;
+                float4 r8;
+                float4 r9;
+
+                float3 axisWeights = saturate(abs(normalize(inp.normal.xyz)) - float3(0.1, 0.1, 0.1)); //r0.xyz
+                axisWeights.xyz /= axisWeights.z + axisWeights.y + axisWeights.x;
+
+                float normalSpeed = _NormalSpeed / _Radius; //r0.w
+                float normalTiling = _NormalTiling * _Radius; //r1.x
+
+                r2.z = inp.normal.z;
+                r2.w = inp.normal.x;
+                r2.x = _Time.y * normalSpeed + inp.normal.y;
+                r2.y = _Time.y * normalSpeed + inp.normal.z;
+                r4.x = _Time.y * normalSpeed - inp.normal.z;
+                r4.y = _Time.y * normalSpeed - inp.normal.x;
+                r4.z = inp.normal.y - _Time.y * normalSpeed;
+                r4.w = inp.normal.z - _Time.y * normalSpeed;
+
+                r3.xy = normalTiling * r2.zx;
+                float2 bumpX1 = tex2D(_BumpTex, r3.xy).wy;
+                bumpX1 = bumpX1 * float2(2.0, 2.0) - float2(1.0, 1.0); //r1.yz
+                bumpX1 = bumpX1 + (1.0 / 255.0); //r1.yz
+
+                r2.yz = normalTiling * r4.xz + bumpX1 * float2(0.15, 0.15);
+                float2 bumpX2 = tex2D(_BumpTex, r2.yz).wy;
+                bumpX2 = bumpX2 * float2(2.0, 2.0) - float2(0.996078, 0.996078); //r2.yz
+
+                r3.zw = normalTiling * r2.wy;
+                float2 bumpY1 = tex2D(_BumpTex, r3.zw).wy; //r3.xy
+                bumpY1 = bumpY1 * float2(2.0, 2.0) - float2(0.996078, 0.996078); //r3.xy
+
+                r3.zw = normalTiling * r4.yw + bumpY1.xy * float2(0.15, 0.15);
+                float2 bumpY2 = tex2D(_BumpTex, r3.zw).wy; //r5.xy
+                bumpY2 = bumpY2 * float2(2.0, 2.0) - float2(0.996078, 0.996078);
+
+                r2.xw = normalTiling * r2.wx;
+                float2 bumpZ1 = tex2D(_BumpTex, r2.xw).wy; //r5.xy
+                bumpZ1 = bumpZ1 * float2(2.0, 2.0) - float2(0.996078, 0.996078);
+
+                r1.xw = normalTiling * r4.yz + bumpZ1 * float2(0.15, 0.15);
+                float2 bumpZ2 = tex2D(_BumpTex, r1.xw).wy; //r4.xy
+                bumpZ2 = bumpZ2 * float2(2.0, 2.0) - float2(0.996078, 0.996078); //r1.xw
+
+                float3 blendedNormalMap; //r1.xyz (z defined later)
+                blendedNormalMap.xy = (bumpX1 + bumpX2) * axisWeights.xx
+                    + (bumpY1 + bumpY2) * axisWeights.yy
+                    + (bumpZ1 + bumpZ2) * axisWeights.zz; //r1.xy
+                float screenAspectRatio = _ScreenTex_TexelSize.z / _ScreenTex_TexelSize.w; //r8.x defined below
+                blendedNormalMap.z = -blendedNormalMap.y * screenAspectRatio; //1.z
+
+                float nDotLUNK = dot(inp.normal.xyz, _Global_SunDir.xyz); //r1.w //negative nDotL? lightDir should be -_Global_SunDir.xyz I think
+
+                float normalStr = (abs(nDotLUNK) + 0.2) * _NormalStrength; //r2.x
+
+                float3 worldNormalWeak = normalize(
+                    (blendedNormalMap.x * normalStr * 0.5) * inp.tangent.xyz
+                    - (blendedNormalMap.y * normalStr * 0.5) * inp.bitangent.xyz
+                    + inp.normal.xyz
+                ); //r2.yzw  //some kind of normal vec
+
+                float3 worldNormalStrong = normalize(
+                    (blendedNormalMap.x * normalStr * 1.5) * inp.tangent.xyz
+                    - (blendedNormalMap.y * normalStr * 1.5) * inp.bitangent.xyz
+                    + inp.normal.xyz
+                ); //r3.xyz  //some kind of normal vec
+
+                float3 eyeVec = normalize(inp.worldPos.xyz - _WorldSpaceCameraPos); //r5.xyz
+
+                float bumpedNdotL = dot(worldNormalWeak, _Global_SunDir.xyz); //r3.w
+                float bumpedNDotV = saturate(dot(eyeVec.xyz, -worldNormalWeak)); //r4.w
+                float nDotV = saturate(dot(eyeVec.xyz, -inp.normal.xyz)); //r5.w
+
+                float3 reflectVec = reflect(eyeVec.xyz, worldNormalWeak); //r2.yzw
+
+                //func
+                float4 screenPos; //r6.xyzw
+                // r6.xz = inp.clipPos.xw * float2(0.5, 0.5);
+                // r6.w = (inp.clipPos.y * _ProjectionParams.x) * 0.5;
+                // r6.xy = r6.zz + r6.xw;
+                screenPos = ComputeScreenPos(inp.clipPos.xyzw); //r6.xyzw // r6.z = screenPos.w
+
+                /* sample depth at pixel pos */
+                float2 pixelPos = screenPos.xy / inp.clipPos.ww; //r6.xy
+                float sceneDepth = tex2D(_CameraDepthTexture, pixelPos.xy).x; // r7.x
+                sceneDepth = LinearEyeDepth(sceneDepth);
+
+                float depthMod1 = max(0, inp.clipPos.w * 0.0007 - 0.9); // 0 until 1286, then linear up. is 1 when .w is 2714
+                depthMod1 = depthMod1 < 1.0 ? pow(depthMod1, 2.0) : depthMod1; //r7.y
+
+                float viewedDistWatertoGround = max(0.0, sceneDepth - inp.clipPos.w);
+                float viewDepthAngle = nDotV * viewedDistWatertoGround * depthMod1;
+
+                /* sample depth at pixel pos offset for refraction */
+                float2 pixelPosRefracted = pixelPos.xy + (0.4 * _RefractionStrength * blendedNormalMap.xz) / inp.clipPos.ww; //r6.xy
+                float sceneDepthRefracted = tex2D(_CameraDepthTexture, pixelPosRefracted).x; //r8.x
+                sceneDepthRefracted = LinearEyeDepth(sceneDepthRefracted);
+
+                float depthMod2 = max(0, inp.clipPos.w * 0.0009 - 0.9); // 0 until 1000, then linear up. is 1 when .w is 2111
+                depthMod2 = depthMod2 < 1.0 ? pow(depthMod2, 2.0) : depthMod2; //r7.z
+
+                float viewedDistWaterToGroundRefracted = sceneDepthRefracted - inp.clipPos.w;
+                float viewDepthAngleRefracted = nDotV * viewedDistWaterToGroundRefracted + depthMod2;
+
+                /* combine to determine depth and angle at viewed angle */
+                viewDepthAngleRefracted = pixelPosRefracted.x < 0.0 ? viewDepthAngle : viewDepthAngleRefracted; //r6.x //is r6.x = pixelPosRefracted at this point?
+                viewDepthAngleRefracted = lerp(viewDepthAngle, viewDepthAngleRefracted, min(viewDepthAngle, 1.0));
+                viewDepthAngleRefracted = viewDepthAngleRefracted > 1.0 ? log(viewDepthAngleRefracted) + 1.0: viewDepthAngleRefracted; //r6.x
+
+                float3 worldPosRefracted = eyeVec.xyz * min(viewDepthAngleRefracted, 50.0) + inp.worldPos.xyz; //r9.xyz
+                float2 causticsUV_X1, causticsUV_X2, causticsUV_Y1, causticsUV_Y2, causticsUV_Z1, causticsUV_Z2;
+                float2 scaledNormal = blendedNormalMap.xy / 5.0;
+
+                causticsUV_X1.x = _CausticsTiling * (worldPosRefracted.z + scaledNormal.x); //r11.x
+                causticsUV_X1.y = _CausticsTiling * (worldPosRefracted.x + scaledNormal.y); //r11.y
+
+                causticsUV_X2.x = _CausticsTiling * (worldPosRefracted.z - _Time.y * normalSpeed + scaledNormal.x); // r14.x
+                causticsUV_X2.y = _CausticsTiling * (worldPosRefracted.x - _Time.y * normalSpeed + scaledNormal.x); // r14.y
+
+                causticsUV_Y1.x = _CausticsTiling * (worldPosRefracted.x + scaledNormal.x); //r5.x
+                causticsUV_Y1.y = _CausticsTiling * (worldPosRefracted.y - _Time.y * 0.56 - scaledNormal.y); //r5.y
+
+                causticsUV_Y2.x = _CausticsTiling * (worldPosRefracted.z + _Time.y * 0.7 - scaledNormal.y); //r14.z
+                causticsUV_Y2.y = _CausticsTiling * (worldPosRefracted.z - _Time.y * 0.56 - scaledNormal.y); //r14.w
+
+                causticsUV_Z1.x = _CausticsTiling * (worldPosRefracted.y + _Time.y * 0.7 - scaledNormal.x); //r11.z
+                causticsUV_Z1.y = _CausticsTiling * (worldPosRefracted.y + _Time.y * 0.7 - scaledNormal.y); //r11.w
+
+                causticsUV_Z2.x = _CausticsTiling * (worldPosRefracted.x - _Time.y * normalSpeed + scaledNormal.x); //r5.xy
+                causticsUV_Z2.y = _CausticsTiling * (worldPosRefracted.z + _Time.y * 0.7 - scaledNormal.y); //r5.xy
+
+
+                float2 causticsX1 = tex2D(_CausticsTex, causticsUV_X1.xy).xz; //r12.xy
+                float2 causticsX2 = tex2D(_CausticsTex, causticsUV_X2.xy).xz; //r15.xy
+                float2 causticsY1 = tex2D(_CausticsTex, causticsUV_Y1.xy).xz; //r9.xy
+                float2 causticsY2 = tex2D(_CausticsTex, causticsUV_Y2.xy).xz; //r10.xy
+                float2 causticsZ1 = tex2D(_CausticsTex, causticsUV_Z1.xy).xz; //r11.xy
+                float2 causticsZ2 = tex2D(_CausticsTex, causticsUV_Z2.xy).xz; //r13.xy
+
+                float2 blendedCaustics = (causticsX1 + causticsX2) * axisWeights.xx
+                    + (causticsY1 + causticsY2) * axisWeights.yy
+                    + (causticsZ1 + causticsZ2) * axisWeights.zz; //r0.xy
+
+                float foamAnim = frac(_FoamSync * (inp.normal.y - _Time.y)) * 1.3 - 0.3; //r0.z
+                float foamAnimMod1 = saturate((foamAnim - nDotV) * _FoamInvThickness + 1.0); // is r5.w = nDotV? //r1.y
+                float foamAnimMod2 = saturate((nDotV - foamAnim) * _FoamInvThickness * 5.0 + 1.0); // is r5.w = nDotV? //r0.z
+                float foam = pow(1.0 - foamAnim, 1.3) * foamAnimMod2 * foamAnimMod1 * saturate(nDotV * 20.0) * blendedCaustics.y * 1.25; //r0.y
+
+                float refractFactor = _RefractionStrength * min(1.0, 2.0 * pow(saturate(viewDepthAngleRefracted * _DepthFactor.y), _DepthFactor.z) * saturate(viewDepthAngleRefracted * 4.0)); //r0.z
+
+                float2 screenUV = (refractFactor * blendedNormalMap.xz + inp.clipPos.xy * float2(0.5, -0.5)) / inp.clipPos.ww; // (this screen.w and clip.w are the same??) + screenPos.ww / inp.clipPos.ww); //r0.zw
+                float3 groundColor = tex2D(_ScreenTex, screenUV.xy).xyz; //r5.xyz
+
+                float depthFactUNK = blendedNormalMap.x * _DepthFactor.w + saturate(viewDepthAngleRefracted * _DepthFactor.x); //r0.z
+
+                float3 shallowColor = lerp(_Color.xyz, _Color1.xyz, depthFactUNK * 5.0); //r1.xyz
+                float3 mediumColor = lerp(_Color1.xyz, _Color2.xyz, (depthFactUNK - 0.2) * 2.5); //r7.xyz
+                float3 deepColor = lerp(_Color.xyz, _Color3.xyz, (depthFactUNK - 0.6) * 2.5); //r9.xyz
+
+                float3 waterColor = depthFactUNK < 1.0 ? deepColor.xyz : _Color3.xyz; //r9.xyz
+                waterColor = depthFactUNK < 0.6 ? mediumColor.xyz : waterColor; //r7.xyz
+                waterColor = depthFactUNK < 0.2 ? shallowColor.xyz : waterColor; //r1.xyz
+                waterColor = depthFactUNK < 0.0 ? _Color.xyz : waterColor; //r1.xyz
+
+                waterColor = lerp(_ShoreIntens, 1.0, saturate(viewDepthAngleRefracted * 3.0)) - 1.0 + waterColor; //r1.xyz
+                waterColor = lerp(waterColor, float3(0.7, 0.7, 0.7), _Global_WhiteMode0); //r1.xyz
+                waterColor = foam * _FoamColor.xyz + lerp(waterColor, _FresnelColor.xyz, pow(max(1.0 - bumpedNDotV * 1.7, 0.0), 3.0)); //r0.yzw
+
+                float3 sunsetColor = float3(1.0, 1.0, 1.0); //r7.xyz
+                if (nDotLUNK <= 1.0) {
+                    float4 r11;
+                    float4 r10;
+                    float4 r7;
+                    float4 r12;
+                    r8.xyzw = nDotLUNK + float4(-0.2, -0.1, 0.1, 0.3);
+                    r8.xyzw = saturate(r8.xyzw * float4(5.0, 10.0, 5.0, 5.0));
+                    r7.xyz = float3(1.0, 1.0, 1.0) - _Global_SunsetColor0.xyz;
+                    r7.xyz = r8.xxx * r7.xyz + _Global_SunsetColor0.xyz;
+                    r9.xyz = _Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25);
+                    r10.xyz = -_Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25) + _Global_SunsetColor0.xyz;
+                    r9.xyz = r8.yyy * r10.xyz + r9.xyz;
+                    r10.xyz = nDotLUNK > float3(0.2, 0.1, -0.1);
+                    r11.xyz = _Global_SunsetColor2.xyz * float3(1.5, 1.5, 1.5);
+                    r12.xyz = _Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25) - r11.xyz;
+                    r8.xyz = r8.zzz * r12.xyz + r11.xyz;
+                    r11.xyz = r8.www * r11.xyz;
+                    r8.xyz = r10.zzz ? r8.xyz : r11.xyz;
+                    r8.xyz = r10.yyy ? r9.xyz : r8.xyz;
+                    sunsetColor.xyz = r10.xxx ? r7.xyz : r8.xyz;
                 }
-                tmp1.x = dot(abs(inp.normal.xyz), abs(inp.normal.xyz));
-                tmp1.x = rsqrt(tmp1.x);
-                tmp1.xyz = saturate(abs(inp.normal.xyz) * tmp1.xxx + float3(-0.1, -0.1, -0.1));
-                tmp1.w = tmp1.y + tmp1.x;
-                tmp1.w = tmp1.z + tmp1.w;
-                tmp1.xyz = tmp1.xyz / tmp1.www;
-                tmp1.w = _NormalSpeed / _Radius;
-                tmp2.x = _NormalTiling * _Radius;
-                tmp3.xy = _Time.yy * tmp1.ww + inp.normal.yz;
-                tmp3.zw = inp.normal.zx;
-                tmp4 = tmp2.xxxx * tmp3.zxwy;
-                tmp5 = tex2D(_BumpTex, tmp4.xy);
-                tmp2.yz = tmp5.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp5.xy = _Time.yy * tmp1.ww + -inp.normal.zx;
-                tmp5.zw = -_Time.yy * tmp1.ww + inp.normal.yz;
-                tmp6 = tmp2.xxxx * tmp5.xzyw;
-                tmp3.yz = tmp2.yz * float2(0.15, 0.15) + tmp6.xy;
-                tmp7 = tex2D(_BumpTex, tmp3.yz);
-                tmp3.yz = tmp7.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp4 = tex2D(_BumpTex, tmp4.zw);
-                tmp4.xy = tmp4.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp4.zw = tmp4.xy * float2(0.15, 0.15) + tmp6.zw;
-                tmp6 = tex2D(_BumpTex, tmp4.zw);
-                tmp4.zw = tmp6.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp3.xw = tmp2.xx * tmp3.wx;
-                tmp6 = tex2D(_BumpTex, tmp3.xw);
-                tmp3.xw = tmp6.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp5.xw = tmp3.xw * float2(0.15, 0.15);
-                tmp2.xw = tmp5.yz * tmp2.xx + tmp5.xw;
-                tmp5 = tex2D(_BumpTex, tmp2.xw);
-                tmp2.xw = tmp5.wy * float2(2.0, 2.0) + float2(-0.996078, -0.996078);
-                tmp2.yz = tmp2.yz + tmp3.yz;
-                tmp3.yz = tmp4.zw + tmp4.xy;
-                tmp3.yz = tmp1.yy * tmp3.yz;
-                tmp2.yz = tmp2.yz * tmp1.xx + tmp3.yz;
-                tmp2.xw = tmp2.xw + tmp3.xw;
-                tmp2.xy = tmp2.xw * tmp1.zz + tmp2.yz;
-                tmp2.w = dot(inp.normal.xyz, _Global_SunDir.xyz);
-                tmp3.x = abs(tmp2.w) + 0.2;
-                tmp3.x = tmp3.x * _NormalStrength;
-                tmp3.yz = tmp2.xy * float2(0.5, -0.5);
-                tmp3.yz = tmp3.xx * tmp3.yz;
-                tmp4.xyz = tmp3.yyy * inp.tangent.xyz + inp.normal.xyz;
-                tmp3.yzw = tmp3.zzz * inp.texcoord2.xyz + tmp4.xyz;
-                tmp4.x = dot(tmp3.xyz, tmp3.xyz);
-                tmp4.x = rsqrt(tmp4.x);
-                tmp3.yzw = tmp3.yzw * tmp4.xxx;
-                tmp4.x = tmp2.x * tmp3.x;
-                tmp4.x = tmp4.x * 1.5;
-                tmp4.xyz = tmp4.xxx * inp.tangent.xyz + inp.normal.xyz;
-                tmp3.x = -tmp2.y * tmp3.x;
-                tmp3.x = tmp3.x * 1.5;
-                tmp4.xyz = tmp3.xxx * inp.texcoord2.xyz + tmp4.xyz;
-                tmp3.x = dot(tmp4.xyz, tmp4.xyz);
-                tmp3.x = rsqrt(tmp3.x);
-                tmp4.xyz = tmp3.xxx * tmp4.xyz;
-                tmp5.xyz = inp.texcoord.xyz - _WorldSpaceCameraPos;
-                tmp3.x = dot(tmp5.xyz, tmp5.xyz);
-                tmp3.x = rsqrt(tmp3.x);
-                tmp6.xyz = tmp3.xxx * tmp5.xyz;
-                tmp4.w = dot(tmp3.xyz, _Global_SunDir.xyz);
-                tmp5.w = saturate(dot(tmp6.xyz, -tmp3.xyz));
-                tmp6.w = saturate(dot(tmp6.xyz, -inp.normal.xyz));
-                tmp7.x = dot(tmp6.xyz, tmp3.xyz);
-                tmp7.x = tmp7.x + tmp7.x;
-                tmp3.yzw = tmp3.yzw * -tmp7.xxx + tmp6.xyz;
-                tmp7.xy = inp.texcoord1.xy * float2(0.5, -0.5) + tmp0.zz;
-                tmp0.z = tmp0.w * tmp6.w;
-                tmp7.z = -tmp0.w * tmp6.w + 0.27;
-                tmp7.z = 0.01 - abs(tmp7.z);
-                tmp7.z = max(tmp7.z, 0.0);
-                tmp7.z = tmp7.z * _Global_Water_Hint;
-                tmp7.z = tmp7.z * 100.0;
-                tmp7.w = _ScreenTex_TexelSize.z / _ScreenTex_TexelSize.w;
-                tmp8.x = _RefractionStrength * 0.4;
-                tmp2.z = -tmp2.y * tmp7.w;
-                tmp8.xy = tmp2.xz * tmp8.xx;
-                tmp8.xy = tmp8.xy / inp.texcoord1.ww;
-                tmp0.xy = tmp0.xy + tmp8.xy;
-                tmp0.xy = tmp0.xy * inp.texcoord1.ww;
-                tmp0.xy = tmp0.xy / inp.texcoord1.ww;
-                tmp8 = tex2D(_CameraDepthTexture, tmp0.xy);
-                tmp0.x = _ZBufferParams.z * tmp8.x + _ZBufferParams.w;
-                tmp0.x = 1.0 / tmp0.x;
-                tmp0.x = tmp0.x - inp.texcoord1.w;
-                tmp0.x = tmp6.w * tmp0.x;
-                tmp0.y = tmp0.x < 0.0;
-                tmp0.x = tmp0.y ? tmp0.z : tmp0.x;
-                tmp0.y = min(tmp0.z, 1.0);
-                tmp0.x = -tmp0.w * tmp6.w + tmp0.x;
-                tmp0.x = tmp0.y * tmp0.x + tmp0.z;
-                tmp0.y = tmp0.x > 1.0;
-                tmp0.z = log(tmp0.x);
-                tmp0.z = tmp0.z * 0.6931472 + 1.0;
-                tmp0.y = tmp0.y ? tmp0.z : tmp0.x;
-                tmp0.zw = tmp0.yy * _DepthFactor.xy;
-                tmp8.xy = saturate(tmp0.zw);
-                tmp0.z = log(tmp8.y);
-                tmp0.z = tmp0.z * _DepthFactor.z;
-                tmp0.z = exp(tmp0.z);
-                tmp8.yz = saturate(tmp0.yy * float2(4.0, 3.0));
-                tmp0.z = tmp0.z * tmp8.y;
-                tmp0.w = saturate(tmp0.w * 0.8);
-                tmp6.w = _DepthFactor.z * 0.5;
-                tmp0.w = log(tmp0.w);
-                tmp0.w = tmp0.w * tmp6.w;
-                tmp0.w = exp(tmp0.w);
-                tmp0.w = 1.0 - tmp0.w;
-                tmp6.w = saturate(tmp0.y * 2.0 + -0.1);
-                tmp0.w = tmp0.w * tmp6.w;
-                tmp0.y = min(tmp0.y, 50.0);
-                tmp6.xyz = tmp6.xyz * tmp0.yyy + inp.texcoord.xyz;
-                tmp9 = _Time * float4(0.7, 0.7, -0.56, -0.56) + tmp6.yzyz;
-                tmp6.w = tmp9.x;
-                tmp10 = tmp2.xyxy * float4(0.2, -0.2, 0.2, -0.2) + tmp6.zwxw;
-                tmp10 = tmp10 * _CausticsTiling.xxxx;
-                tmp11 = tex2D(_CausticsTex, tmp10.xy);
-                tmp12.xy = _Time.yy * tmp1.ww + -tmp6.zx;
-                tmp12.zw = tmp9.zw;
-                tmp13 = tmp2.xyxy * float4(0.2, -0.2, 0.2, -0.2) + tmp12.xzyw;
-                tmp13 = tmp13 * _CausticsTiling.xxxx;
-                tmp14 = tex2D(_CausticsTex, tmp13.xy);
-                tmp9.x = tmp6.x;
-                tmp6.xy = tmp2.xy * float2(0.2, -0.2) + tmp9.xy;
-                tmp6.xy = tmp6.xy * _CausticsTiling.xx;
-                tmp6 = tex2D(_CausticsTex, tmp6.xy);
-                tmp9 = tex2D(_CausticsTex, tmp13.zw);
-                tmp10 = tex2D(_CausticsTex, tmp10.zw);
-                tmp6.zw = tmp2.xy * float2(0.2, -0.2) + tmp12.yz;
-                tmp6.zw = tmp6.zw * _CausticsTiling.xx;
-                tmp12 = tex2D(_CausticsTex, tmp6.zw);
-                tmp6.zw = tmp11.xy + tmp14.xy;
-                tmp6.xy = tmp6.xy + tmp9.xy;
-                tmp1.yw = tmp1.yy * tmp6.xy;
-                tmp1.xy = tmp6.zw * tmp1.xx + tmp1.yw;
-                tmp6.xy = tmp10.xy + tmp12.xy;
-                tmp1.xy = tmp6.xy * tmp1.zz + tmp1.xy;
-                tmp0.y = tmp0.w * tmp1.x;
-                tmp0.w = inp.normal.y * _FoamSync;
-                tmp0.w = -_Time.y * _FoamSpeed + tmp0.w;
-                tmp0.w = frac(tmp0.w);
-                tmp0.w = tmp0.w * 1.3 + -0.3;
-                tmp1.x = 1.0 - tmp0.w;
-                tmp1.x = log(tmp1.x);
-                tmp1.x = tmp1.x * 1.3;
-                tmp1.x = exp(tmp1.x);
-                tmp1.z = tmp0.w - tmp0.x;
-                tmp1.z = saturate(tmp1.z * _FoamInvThickness + 1.0);
-                tmp0.w = tmp0.x - tmp0.w;
-                tmp0.w = tmp0.w * _FoamInvThickness;
-                tmp0.w = saturate(tmp0.w * 5.0 + 1.0);
-                tmp0.w = tmp0.w * tmp1.z;
-                tmp0.x = saturate(tmp0.x * 20.0);
-                tmp0.x = tmp0.x * tmp0.w;
-                tmp0.x = tmp1.x * tmp0.x;
-                tmp0.x = tmp0.x * tmp1.y;
-                tmp0.xy = tmp0.xy * float2(1.25, 1.5);
-                tmp0.w = tmp0.z + tmp0.z;
-                tmp0.w = min(tmp0.w, 1.0);
-                tmp0.w = tmp0.w * _RefractionStrength;
-                tmp1.xy = tmp7.xy / inp.texcoord1.ww;
-                tmp1.zw = tmp0.ww * tmp2.xz;
-                tmp1.zw = tmp1.zw / inp.texcoord1.ww;
-                tmp1.xy = tmp1.zw + tmp1.xy;
-                tmp1.xy = tmp1.xy * inp.texcoord1.ww;
-                tmp1.xy = tmp1.xy / inp.texcoord1.ww;
-                tmp1 = tex2D(_ScreenTex, tmp1.xy);
-                tmp0.w = tmp2.x * _DepthFactor.w + tmp8.x;
-                tmp1.w = tmp0.w >= 0.0;
-                tmp2.x = tmp0.w * 5.0;
-                tmp6.xyz = _Color1.xyz - _Color.xyz;
-                tmp2.xyz = tmp2.xxx * tmp6.xyz + _Color.xyz;
-                tmp6.xyz = tmp0.www - float3(0.2, 0.6, 0.25);
-                tmp6.xyz = tmp6.zxy * float3(1.333, 2.5, 2.5);
-                tmp7.xyw = _Color2.xyz - _Color1.xyz;
-                tmp7.xyw = tmp6.yyy * tmp7.xyw + _Color1.xyz;
-                tmp8.xyw = tmp0.www < float3(0.2, 0.6, 1.0);
-                tmp9.xyz = _Color3.xyz - _Color2.xyz;
-                tmp6.yzw = tmp6.zzz * tmp9.xyz + _Color2.xyz;
-                tmp6.yzw = tmp8.www ? tmp6.yzw : _Color3.xyz;
-                tmp6.yzw = tmp8.yyy ? tmp7.xyw : tmp6.yzw;
-                tmp2.xyz = tmp8.xxx ? tmp2.xyz : tmp6.yzw;
-                tmp2.xyz = tmp1.www ? tmp2.xyz : _Color.xyz;
-                tmp0.w = 1.0 - _ShoreIntens;
-                tmp0.w = tmp8.z * tmp0.w + _ShoreIntens;
-                tmp0.w = tmp0.w - 1.0;
-                tmp2.xyz = tmp0.www + tmp2.xyz;
-                tmp6.yzw = float3(0.7, 0.7, 0.7) - tmp2.xyz;
-                tmp2.xyz = _Global_WhiteMode0.xxx * tmp6.yzw + tmp2.xyz;
-                tmp0.w = -tmp5.w * 1.7 + 1.0;
-                tmp0.w = max(tmp0.w, 0.0);
-                tmp1.w = tmp0.w * tmp0.w;
-                tmp0.w = tmp0.w * tmp1.w;
-                tmp6.yzw = _FresnelColor.xyz - tmp2.xyz;
-                tmp2.xyz = tmp0.www * tmp6.yzw + tmp2.xyz;
-                tmp2.xyz = tmp0.xxx * _FoamColor.xyz + tmp2.xyz;
-                tmp0.x = max(tmp4.w, 0.0);
-                tmp0.x = min(tmp0.x, 0.7);
-                tmp0.w = tmp2.w <= 1.0;
-                if (tmp0.w) {
-                    tmp8 = tmp2.wwww + float4(-0.2, -0.1, 0.1, 0.3);
-                    tmp8 = saturate(tmp8 * float4(5.0, 10.0, 5.0, 5.0));
-                    tmp6.yzw = float3(1.0, 1.0, 1.0) - _Global_SunsetColor0.xyz;
-                    tmp6.yzw = tmp8.xxx * tmp6.yzw + _Global_SunsetColor0.xyz;
-                    tmp7.xyw = _Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25);
-                    tmp9.xyz = -_Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25) + _Global_SunsetColor0.xyz;
-                    tmp7.xyw = tmp8.yyy * tmp9.xyz + tmp7.xyw;
-                    tmp9.xyz = tmp2.www > float3(0.2, 0.1, -0.1);
-                    tmp10.xyz = _Global_SunsetColor2.xyz * float3(1.5, 1.5, 1.5);
-                    tmp11.xyz = _Global_SunsetColor1.xyz * float3(1.25, 1.25, 1.25) + -tmp10.xyz;
-                    tmp8.xyz = tmp8.zzz * tmp11.xyz + tmp10.xyz;
-                    tmp10.xyz = tmp8.www * tmp10.xyz;
-                    tmp8.xyz = tmp9.zzz ? tmp8.xyz : tmp10.xyz;
-                    tmp7.xyw = tmp9.yyy ? tmp7.xyw : tmp8.xyz;
-                    tmp6.yzw = tmp9.xxx ? tmp6.yzw : tmp7.xyw;
-                } else {
-                    tmp6.yzw = float3(1.0, 1.0, 1.0);
-                }
-                tmp7.xyw = float3(1.0, 1.0, 1.0) - tmp6.yzw;
-                tmp6.yzw = tmp7.xyw * float3(0.7, 0.7, 0.7) + tmp6.yzw;
-                tmp0.w = tmp2.w > 0.0;
-                tmp1.w = tmp2.w * 4.0;
-                tmp1.w = saturate(tmp1.w);
-                tmp7.xyw = _Global_WaterAmbientColor0.xyz - _Global_WaterAmbientColor1.xyz;
-                tmp7.xyw = tmp1.www * tmp7.xyw + _Global_WaterAmbientColor1.xyz;
-                tmp8.xy = saturate(tmp2.ww * float2(4.0, 0.7) + float2(1.0, 0.5));
-                tmp9.xyz = _Global_WaterAmbientColor1.xyz - _Global_WaterAmbientColor2.xyz;
-                tmp8.xzw = tmp8.xxx * tmp9.xyz + _Global_WaterAmbientColor2.xyz;
-                tmp7.xyw = tmp0.www ? tmp7.xyw : tmp8.xzw;
-                tmp8.x = tmp4.w * 1.5;
-                tmp8.zw = tmp4.ww * float2(3.0, 0.35) + float2(0.7, 1.0);
-                tmp0.w = tmp8.w * tmp8.w;
-                tmp0.w = tmp8.w * tmp0.w;
-                tmp7.xyw = tmp0.www * tmp7.xyw;
-                tmp6.yzw = tmp0.xxx * tmp6.yzw + tmp7.xyw;
-                tmp5.xyz = -tmp5.xyz * tmp3.xxx + _Global_SunDir.xyz;
-                tmp0.x = dot(tmp5.xyz, tmp5.xyz);
-                tmp0.x = rsqrt(tmp0.x);
-                tmp5.xyz = tmp0.xxx * tmp5.xyz;
-                tmp0.x = saturate(dot(tmp4.xyz, tmp5.xyz));
-                tmp8.xz = saturate(tmp8.xz);
-                tmp0.x = tmp0.x * tmp8.z;
-                tmp4.xyz = _SpeclColor.xyz - _SpeclColor1.xyz;
-                tmp4.xyz = tmp8.xxx * tmp4.xyz + _SpeclColor1.xyz;
-                tmp0.w = 1.3 - tmp2.w;
-                tmp1.w = tmp0.w * tmp0.w;
-                tmp0.w = tmp0.w * tmp1.w;
-                tmp0.w = max(tmp0.w, 0.0);
-                tmp1.w = tmp5.w + tmp5.w;
-                tmp1.w = min(tmp1.w, 1.0);
-                tmp1.w = tmp1.w * tmp1.w;
-                tmp1.w = tmp1.w * 98.0 + 2.0;
-                tmp0.x = log(tmp0.x);
-                tmp0.x = tmp0.x * tmp1.w;
-                tmp0.x = exp(tmp0.x);
-                tmp4.xyz = tmp4.xyz * tmp0.xxx;
-                tmp4.xyz = tmp0.www * tmp4.xyz;
-                tmp2.xyz = tmp2.xyz * tmp6.yzw + tmp4.xyz;
-                tmp0.x = tmp8.y * tmp8.y;
-                tmp0.x = tmp0.x * tmp8.y;
-                tmp0.w = 1.0 - _GIGloss;
-                tmp0.w = log(tmp0.w);
-                tmp0.w = tmp0.w * 0.4;
-                tmp0.w = exp(tmp0.w);
-                tmp0.w = tmp0.w * 10.0;
-                tmp3 = texCUBElod(_GITex, float4(tmp3.yzw, tmp0.w));
-                tmp0.w = _GIStrengthDay - _GIStrengthNight;
-                tmp0.x = tmp0.x * tmp0.w + _GIStrengthNight;
-                tmp3 = tmp0.xxxx * tmp3;
-                tmp0.x = dot(tmp3.xyz, float3(0.12, 0.24, 0.04));
-                tmp3 = tmp3 * float4(0.4, 0.4, 0.4, 0.4) + -tmp0.xxxx;
-                tmp3 = _GISaturate.xxxx * tmp3 + tmp0.xxxx;
-                tmp6.x = saturate(tmp6.x);
-                tmp2.xyz = tmp2.xyz - tmp1.xyz;
-                tmp1.xyz = tmp0.zzz * tmp2.xyz + tmp1.xyz;
-                tmp0 = tmp0.yyyy * _CausticsColor;
-                tmp2.x = saturate(tmp4.w * 2.0 + 0.2);
-                tmp1.w = 1.0;
-                tmp0 = tmp0 * tmp2.xxxx + tmp1;
-                tmp0 = tmp3 * tmp6.xxxx + tmp0;
-                tmp1.x = dot(tmp0.xyz, float3(0.3, 0.6, 0.1));
-                tmp1.xyz = tmp1.xxx * float3(0.75, 0.75, 0.75) + -tmp0.xyz;
-                tmp0.xyz = _Global_WhiteMode0.xxx * tmp1.xyz + tmp0.xyz;
-                o.sv_target = tmp7.zzzz * _Color1 + tmp0;
+                sunsetColor.xyz = lerp(sunsetColor.xyz, float3(1.0, 1.0, 1.0), float3(0.7, 0.7, 0.7)); //r7.xyz
+
+
+                r8.xyz = lerp(_Planet_WaterAmbientColor1.xyz, _Planet_WaterAmbientColor0.xyz, saturate(nDotLUNK * 4.0));
+                r9.xyz = lerp(_Planet_WaterAmbientColor2.xyz, _Planet_WaterAmbientColor1.xyz, saturate(nDotLUNK * 4.0 + 1.0));
+                float3 ambientColor = nDotLUNK > 0.0 ? r8.xyz : r9.xyz; //r8.xyz
+                ambientColor = min(max(bumpedNdotL, 0.0), 0.7) * sunsetColor.xyz + pow(bumpedNdotL * 0.35 + 1.0, 3.0) * ambientColor.xyz;
+
+                float3 eyeToSunDir = normalize(_Global_SunDir.xyz - eyeVec); //r4.xyz
+                float nDotEyeSun = saturate(dot(worldNormalStrong, eyeToSunDir.xyz)) * saturate(bumpedNdotL * 4.5 + 0.7); //r1.x
+                float3 specColor = lerp(_SpeclColor1.xyz, _SpeclColor.xyz, saturate(r9.x));
+                //r3.xyz //what's r9.x? is it red from the color? weird.
+                float specPower = pow(min(2.0 * bumpedNDotV, 1.0), 2.0) * 98.0 + 2.0; //r1.z
+                float3 finalColor = waterColor * ambientColor + max(pow(1.3 - nDotLUNK, 3.0), 0.0) * specColor * pow(nDotEyeSun, specPower); //r0.yzw
+
+                float lod = pow(1.0 - _GIGloss, 0.4) + 10.0; //r1.y
+                float4 reflectColor = texCUBElod(_GITex, float4(reflectVec, lod)); //r2.xyzw
+
+                float4 giReflect = reflectColor.xyzw * lerp(_GIStrengthNight, _GIStrengthDay, pow(saturate(nDotLUNK * 0.7 + 0.5), 3.0)); //r1.xyzw
+                float giReflectGrey = dot(giReflect.xyz, float3(0.12, 0.24, 0.04));
+                giReflect.xyzw = lerp(giReflectGrey.xxxx, giReflect.xyzw * float4(0.4, 0.4, 0.4, 0.4), _GISaturate); //r1.xyzw
+
+                groundColor = lerp(groundColor, finalColor, min(viewDepthAngle, 1.0));
+                float causticsPower = saturate(viewDepthAngleRefracted * 2.0 - 0.1) * (1.0 - pow(saturate(viewDepthAngleRefracted * _DepthFactor.y * 0.8), _DepthFactor.z * 0.5)) * blendedCaustics.x * 1.5; //r0.x
+                float4 finalColorAndAlpha = giReflect.xyzw * saturate((depthFactUNK - 0.25) * 1.333)
+                    + causticsPower * _CausticsColor * saturate(bumpedNdotL * 3.0 + 0.2)
+                    + float4(groundColor.xyz, 1.0); //r0.xyzw
+
+                float luminance = dot(finalColorAndAlpha.xyz, float3(0.3, 0.6, 0.1)); //r1.x
+                finalColorAndAlpha.xyz = lerp(finalColorAndAlpha.xyz, luminance * float3(0.75, 0.75, 0.75), _GlobalWhiteMode0);
+
+                float mainColorStr = max(0.01 - abs(0.27 - viewDepthAngle), 0.0) * _Global_Water_Hint * 100.0; //r7.w
+                o.sv_target = mainColorStr * _Color1 + finalColorAndAlpha.xyzw;
+
                 return o;
             }
             ENDCG

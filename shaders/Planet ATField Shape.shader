@@ -1,4 +1,4 @@
-Shader "Unlit/Planet ATField Shape" {
+Shader "Unlit/Planet ATField Shape REPLACE" {
     Properties {
         _K ("K", Float) = 0.5
         _Color0 ("Color 0", Color) = (0,0,0,0)
@@ -11,23 +11,24 @@ Shader "Unlit/Planet ATField Shape" {
     }
     SubShader {
         LOD 100
-        Tags { "RenderType" = "Opaque" }
+        Tags { "DisableBatching" = "true" "IGNOREPROJECTOR" = "true" "QUEUE" = "Transparent+100" "RenderType" = "Transparent" }
         Pass {
             LOD 100
-            Tags { "RenderType" = "Opaque" }
+            Tags { "DisableBatching" = "true" "IGNOREPROJECTOR" = "true" "QUEUE" = "Transparent+100" "RenderType" = "Transparent" }
             Blend SrcAlpha OneMinusSrcAlpha, SrcAlpha OneMinusSrcAlpha
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma target 5.0
+            #pragma enable_d3d11_debug_symbols
             
-            #include "../../../Downloads/builtin_shaders-2018/CGIncludes/UnityCG.cginc"
+            #include "UnityCG.cginc"
             
             struct v2f
             {
                 float4 pos : SV_POSITION0;
                 float3 worldPos : TEXCOORD0;
-                float shieldPowerPct : TEXCOORD1;
+                float shieldHeightPct : TEXCOORD1;
                 
             };
             
@@ -50,43 +51,56 @@ Shader "Unlit/Planet ATField Shape" {
             float _IsBroken;
             float _BrokenMultiplier;
             
+            float sdf(float3 centerPos, float3 pointPos, float radius, float scale)
+            {
+                radius = radius * scale;
+                
+                float distfromCenter = distance(centerPos, pointPos); //r2.yzw
+                
+                //center = 0, edge = 1, outside edge > 1
+                float pctDistShieldRadius = distfromCenter / radius; //r2.y
+                //center = 1, edge = 0, outside edge < 0
+                float distFromEdge = lerp(1.0 - pow(pctDistShieldRadius, 2), 1.0 - pctDistShieldRadius, saturate(pctDistShieldRadius));
+                return distFromEdge * scale;
+            }
+            
             v2f vert(appdata_full v)
             {
                 v2f o;
                 float3 normal = normalize(v.vertex.xyz); //r0.xyz
                 float halfRadius = _PlanetRadius / 2.0; //r0.w
-                float shieldPowerPct = 0; //r1.w
+                float3 surfaceLevelPos = _PlanetRadius * normal.xyz;
                 
-                for(int i = 0; i < asuint(_GeneratorCount); i++) {
-                    float thisGenShieldPower = _GeneratorMatrix[i].w;
-                    float3 thisGenShieldPos = _GeneratorMatrix[i].xyz;
+                float shieldHeightPct = 0; //r1.w
+                
+                for(uint i = 0; i < asuint(_GeneratorCount); i++) {
+                    float shieldGeneratorPower = _GeneratorMatrix[i].w;
                     
-                    if (thisGenShieldPower < 0.001) {
+                    if (shieldGeneratorPower < 0.001) {
                       continue;
                     }
                     
-                    float3 rayGenToGroundPosOfShield = normal.xyz * _PlanetRadius - thisGenShieldPos; //r2.yzw
+                    float3 shieldGeneratorPos = _GeneratorMatrix[i].xyz;
                     
-                    float invDistPctFromCenter = length(rayGenToGroundPosOfShield) / (thisGenShieldPower * halfRadius); //r2.y
-                    float falloff = lerp(1.0 - pow(invDistPctFromCenter, 2), 1.0 - invDistPctFromCenter, saturate(invDistPctFromCenter));
-                    falloff = falloff * thisGenShieldPower;
+                    //center = 1, edge = 0, outside edge < 0
+                    float dist = sdf(shieldGeneratorPos, surfaceLevelPos, halfRadius, shieldGeneratorPower);
                     
-                    float kPower = _K * (thisGenShieldPower / 4.0 + 0.75); //r2.w
-                    float powerFactor = saturate(0.5 - ((0.5 * (falloff - shieldPowerPct)) / kPower));
+                    float kPower = _K * (shieldGeneratorPower / 4.0 + 0.75); //r2.w // 2.1 * [.75, 1.0]
+                    float powerFactor = saturate(0.5 - ((0.5 * (dist - shieldHeightPct)) / kPower));
                     
-                    shieldPowerPct = powerFactor * kPower * lerp(falloff, shieldPowerPct, powerFactor);
+                    shieldHeightPct = powerFactor * kPower * (1.0 - powerFactor) + lerp(dist, shieldHeightPct, powerFactor);
                 }
                 
-                shieldPowerPct = saturate(shieldPowerPct);
-                shieldPowerPct = pow(pow(shieldPowerPct, 2) * (3.0 - 2.0 * shieldPowerPct), 3); //r2.
-                float shieldHeight = _PlanetRadius + _FieldAltitude * shieldPowerPct;
+                shieldHeightPct = saturate(shieldHeightPct);
+                shieldHeightPct = pow(pow(shieldHeightPct, 2) * (3.0 - 2.0 * shieldHeightPct), 3); //r2.
+                float shieldHeight = _PlanetRadius + _FieldAltitude * shieldHeightPct;
                 
                 float3 worldPos = normal.xyz * shieldHeight; //r0.xyz
                 worldPos = length(worldPos) < 2.0 + _PlanetRadius ? float3(0.96, 0.96, 0.96) * worldPos : worldPos; //r2.xyz
                 
                 o.pos.xyzw = mul(unity_MatrixVP, float4(worldPos, 1));
                 o.worldPos = worldPos;
-                o.shieldPowerPct = shieldPowerPct;
+                o.shieldHeightPct = shieldHeightPct;
                 
                 return o;
             }
@@ -95,24 +109,24 @@ Shader "Unlit/Planet ATField Shape" {
             {
                 fout o;
                 
-                if (i.shieldPowerPct < 0.01)
+                if (i.shieldHeightPct < 0.01)
                     discard;
                 
-                if (length(i.worldPos.xyz) < 202.5)
+                if (length(i.worldPos.xyz) < _PlanetRadius + 2.5)
                     discard;
                 
-                float lowColorFactor = 2.0 * (i.shieldPowerPct - 0.1);
+                float lowColorFactor = 2.0 * (i.shieldHeightPct - 0.1);
                 float4 colorLowPower = lerp(_Color1.xyzw, _Color2.xyzw, lowColorFactor);
                 
-                float highColorFactor = pow(saturate(2.5 * (i.shieldPowerPct - 0.6)), 2); // 0 until x= 0.6, then exp up to 1
+                float highColorFactor = pow(saturate(2.5 * (i.shieldHeightPct - 0.6)), 2); // 0 until x= 0.6, then exp up to 1
                 float4 colorHighPower = lerp(_Color2.xyzw, _Color3.xyzw, highColorFactor);
                 
-                float4 color = i.shieldPowerPct < 0.6 ? colorLowPower : colorHighPower;
+                float4 color = i.shieldHeightPct < 0.6 ? colorLowPower : colorHighPower;
                 
-                float transparentFactor = smoothstep(0.052, 0.1, i.shieldPowerPct); //r0.y
+                float transparentFactor = smoothstep(0.052, 0.1, i.shieldHeightPct); //r0.y
                 color = lerp(_Color0.xyzw, color.xyzw, transparentFactor);
                 
-                float finalColorFactor = smoothstep(0.995, 0.99999995, i.shieldPowerPct);
+                float finalColorFactor = smoothstep(0.995, 0.99999995, i.shieldHeightPct);
                 color = lerp(color.xyzw, _Color4.xyzw, finalColorFactor);
                 
                 o.sv_target.xyz = color.xyz;
