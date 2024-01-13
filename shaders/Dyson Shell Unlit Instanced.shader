@@ -30,7 +30,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       #pragma vertex vert
       #pragma fragment frag
       #pragma target 5.0
-      //#pragma enable_d3d11_debug_symbols
+      #pragma enable_d3d11_debug_symbols
 
     struct PolygonData
     {
@@ -250,7 +250,6 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
 
     float state = i.state_clock.x;
 
-    /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
     int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5);
 
     int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
