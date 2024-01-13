@@ -13,7 +13,6 @@ namespace SphereOpt
 
         public struct PolygonData {
             public Vector3 pos;
-            public Vector3 normal;
         }
 
         public struct HexData
@@ -81,7 +80,7 @@ namespace SphereOpt
             polygonPool = new PolygonData[64];
             hexProgressBuffer = new ComputeBuffer(64, 4);
             shellBuffer = new ComputeBuffer(11, 32);
-            polygonBuffer = new ComputeBuffer(64, 24);
+            polygonBuffer = new ComputeBuffer(64, 12);
             SetProps();
         }
 
@@ -135,7 +134,7 @@ namespace SphereOpt
             }
             polygonPool = destinationArray;
             polygonBuffer?.Release();
-            polygonBuffer = new ComputeBuffer(newCap, 24);
+            polygonBuffer = new ComputeBuffer(newCap, 12);
             props.SetBuffer(PolygonBuffer, polygonBuffer);
             polygonBufferIsDirty = true;
         }
@@ -145,18 +144,11 @@ namespace SphereOpt
             for (var i = 0; i < polygon.Count; i++)
             { 
                 polygonPool[polygonCursor + i].pos = polygon[i];
-                polygonPool[polygonCursor + i].normal = polyn[i];
             }
 
             if (!clockwise)
             {
                 Array.Reverse(polygonPool, polygonCursor, polygon.Count);
-                for (int i = 0; i < polygon.Count; i++)
-                {
-                    Vector3 vector = polygonPool[polygonCursor + i].pos;
-                    Vector3 vector2 = polygonPool[polygonCursor + (i + 1) % polygon.Count].pos;
-                    polygonPool[polygonCursor + i].normal = VectorLF3.Cross(vector, vector2).normalized;
-                }
             }
 
             polygonBufferIsDirty = true;
@@ -273,7 +265,6 @@ namespace SphereOpt
             for (int i = 0; i < shellPool[shellId].polyCount; i++)
             {
                 polygonPool[pbi + i].pos = Vector3.zero;
-                polygonPool[pbi + i].normal = Vector3.zero;
             }
             polygonBufferIsDirty = true;
 

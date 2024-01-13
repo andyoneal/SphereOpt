@@ -35,7 +35,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
     struct PolygonData
     {
         float3 pos;
-        float3 normal;
     };
 
     struct HexProgressData
@@ -249,11 +248,10 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
       if (hideFarSideEnabled && isFarSide) discard;
     }
 
-    //uint polyCount = i.polyGroup_pctComplete_polyCount_state.z;
     float state = i.state_clock.x;
 
     /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
-    int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
+    int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5);
 
     int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
     int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
@@ -266,74 +264,34 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     int prevIndex = polygonBaseIndex + prevIndexOffset;
     int nextIndex = polygonBaseIndex + nextIndexOffset;
     int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
-
-    int clockwise = 1;//sign(i.state_clock.y);
-
-    //TODO: discard pixels
-    float3 prevLineNormal = _PolygonBuffer[prevIndex].normal;
-    float3 thisLineDir = _PolygonBuffer[nextIndex].pos - _PolygonBuffer[polyVertIndex].pos;
-    //float prevLineIsConvex = sign(dot(thisLineDir, prevLineNormal));
-    float3 prevLineToPoint = i.objectPos.xyz - _PolygonBuffer[prevIndex].pos;
-    //float prevLineInside = sign(dot(prevLineToPoint, prevLineNormal));
-
-    float3 thisLineNormal = _PolygonBuffer[polyVertIndex].normal;
-    float3 nextLineDir = _PolygonBuffer[nextnextIndex].pos - _PolygonBuffer[nextIndex].pos;
-    //float nextLineIsConvex = sign(dot(nextLineDir, thisLineNormal));
-    float3 nextLineToPoint = i.objectPos.xyz - _PolygonBuffer[nextIndex].pos;
-    //float thisLineInside = sign(dot(nextLineToPoint, thisLineNormal));
-
-    float3 nextLineNormal = _PolygonBuffer[nextIndex].normal;
-    float3 nextnextLineToPoint = i.objectPos.xyz - _PolygonBuffer[nextnextIndex].pos;
-    //float nextLineInside = sign(dot(nextnextLineToPoint, nextLineNormal));
-
-    //float insideBounds = isInside(nextLineIsConvex, prevLineIsConvex, nextLineInside, thisLineInside, prevLineInside);
-
-    float prevLineIsConcave = dot(thisLineDir, prevLineNormal);
-    float nextLineIsConcave = dot(nextLineDir, thisLineNormal);
-    // <0 means convex
-    // >0 means concave
-    // 0 means parallel
-    int prevLineIsConvex = prevLineIsConcave > 0 ? 1 : prevLineIsConcave < 0 ? -1 : 0;
-    int nextLineIsConvex = nextLineIsConcave > 0 ? 1 : nextLineIsConcave < 0 ? -1 : 0;
-    //set to int, flip sign. 1=convex, -1=concave
-
-    float prevLineInside = dot(prevLineToPoint, prevLineNormal);
-    float thisLineInside = dot(nextLineToPoint, thisLineNormal);
-    float nextLineInside = dot(nextnextLineToPoint, nextLineNormal);
-    // inside if >0, outside if <0
-
-    // flip sign if counterclockwise (_Clockwise = -1)
-
-    prevLineIsConvex *= clockwise;
-    nextLineIsConvex *= clockwise;
-    prevLineInside *= clockwise;
-    thisLineInside *= clockwise;
-    nextLineInside *= clockwise;
-
-    float insideBounds = -1;
-    if (nextLineIsConvex > 0 && prevLineIsConvex > 0) {
-      if (nextLineInside > 0 && thisLineInside > 0 && prevLineInside > 0) {
-        insideBounds = 1;
-      } else {
-        insideBounds = -1;
-      }
-    } else {
-      if (nextLineIsConvex > 0 && prevLineIsConvex <= 0) {
-        insideBounds = nextLineInside > 0 && (prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
-      } else {
-        if (nextLineIsConvex <= 0 && prevLineIsConvex > 0) {
-          insideBounds = prevLineInside > 0 && (thisLineInside > 0 || nextLineInside > 0) ? 1 : -1;      
-        } else {
-          insideBounds = (nextLineInside > 0 || prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
-        }
-      }
+    
+    float3 prevVert = _PolygonBuffer[prevIndex].pos;
+    float3 thisVert = _PolygonBuffer[polyVertIndex].pos;
+    
+    float3 prevNormal = normalize(cross(prevVert, thisVert));
+    float3 prevToPoint = input.objectPos.xyz - prevVert;
+    bool prevLineOutside = dot(prevToPoint, prevNormal) <= 0;
+    
+    float3 nextVert = _PolygonBuffer[nextIndex].pos;
+    
+    float3 thisNormal = normalize(cross(thisVert, nextVert));
+    float3 thisToNext = nextVert - thisVert;
+    bool thisAngleIsConvex = dot(thisToNext, prevNormal) > 0;
+    float3 nextToPoint = input.objectPos.xyz - nextVert;
+    bool thisLineOutside = dot(nextToPoint, thisNormal) <= 0;
+    
+    float3 nextnextVert = _PolygonBuffer[nextnextIndex].pos;
+    
+    float3 nextNormal = normalize(cross(nextVert, nextnextVert));
+    float3 nextToNextnext = nextnextVert - nextVert;
+    bool nextAngleIsConvex = dot(nextToNextnext, thisNormal) > 0;
+    float3 nextnextToPoint = input.objectPos.xyz - nextnextVert;
+    bool nextLineOutside = dot(nextnextToPoint, nextNormal) <= 0;
+    
+    bool prevAndThisOutside = prevLineOutside && thisLineOutside;
+    if ((thisAngleIsConvex && ((nextAngleIsConvex && thisLineOutside) || prevLineOutside || (thisLineOutside && nextLineOutside))) || (nextAngleIsConvex && (nextLineOutside || (prevLineOutside && thisLineOutside))) || ((prevLineOutside && thisLineOutside) && nextLineOutside)) {
+        discard;
     }
-
-    if (insideBounds < 0) discard;
-
-    //if (insideBounds < 0) discard;
-    /* end shell/frame bounds check */
-
 
     float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
     
