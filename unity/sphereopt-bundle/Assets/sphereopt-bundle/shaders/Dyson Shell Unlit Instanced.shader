@@ -287,11 +287,11 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float3 nextnextToPoint = input.objectPos.xyz - nextnextVert;
     bool nextLineOutside = dot(nextnextToPoint, nextNormal) <= 0;
     
-    bool prevAndThisOutside = prevLineOutside && thisLineOutside;
-    if ((thisAngleIsConvex && ((nextAngleIsConvex && thisLineOutside) || prevLineOutside || (thisLineOutside && nextLineOutside))) || (nextAngleIsConvex && (nextLineOutside || (prevLineOutside && thisLineOutside))) || ((prevLineOutside && thisLineOutside) && nextLineOutside)) {
-        discard;
-    }
-
+    if (prevLineOutside) discard;
+    
+    // if ((thisAngleIsConvex && ((nextAngleIsConvex && thisLineOutside) || prevLineOutside || (thisLineOutside && nextLineOutside))) || (nextAngleIsConvex && (nextLineOutside || (prevLineOutside && thisLineOutside))) || ((prevLineOutside && thisLineOutside) && nextLineOutside)) {
+    //     discard;
+    // }
 
     float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
     
@@ -318,21 +318,17 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float2 randomSampleCoords = float2(0.001953125,0.001953125) * correctedCoords.xy;
     float random_num = tex2Dlod(_NoiseTex, float4(randomSampleCoords.xy, 0, 0)).x;
 
-    float cutOut = 0;
+    float isPlanned = 0;
     if (i.pidx_close_pct_cnt.z - random_num * 0.999 < 0.00005) {
-      UNITY_BRANCH
-      if (renderPlace > 1.5) {
-        float2 pixelPos = (_ScreenParams.xy * screenPos.xy); //(i.screenPos.xy / i.screenPos.ww));
-        pixelPos = (int2)pixelPos;
-        cutOut = (((uint)pixelPos.x << 2) & 12) | ((uint)0 & ~12);
-        cutOut = (((uint)pixelPos.y << 0) & 3) | ((uint)cutOut & ~3);
-        if(any((uint)cutOut == uint4(4,6,12,14))) discard;
-        //clip(0.2499 - icb[cutOut].x * 0.0588);
-
-        cutOut = 1;
-      } else {
-        discard;
-      }
+        UNITY_BRANCH
+        if (renderPlace > 1.5) {
+          uint2 pixelPos = screenPos.xy;
+          int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
+          if (mask != 0) discard;
+          isPlanned = 1;
+        } else {
+          discard;
+        }
     }
 
     float2 scaledUV = uv.xy / _Scale;
@@ -388,9 +384,9 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float3 finalColor;
     if(renderPlace > 1.5) {
       float3 shellColor = i.color.w > 0.5 ? i.color.xyz : (asint(_Global_DS_PaintingLayerId) == asint(_LayerId) ? float3(0, 0.3, 0.65) : float3(0, 0.8, 0.6));
-      float3 shellEmissionColor = lerp(emission.xyz * 2.2, shellColor, 0.8 * cutOut);
-      specularStrength       = state > 0.5 ? 0   : 0.8 * specularStrength * (1.0 - cutOut);
-      fadeOut                = state > 0.5 ? 0   : 0.03                   * (1.0 - cutOut);
+      float3 shellEmissionColor = lerp(emission.xyz * 2.2, shellColor, 0.8 * isPlanned);
+      specularStrength       = state > 0.5 ? 0   : 0.8 * specularStrength * (1.0 - isPlanned);
+      fadeOut                = state > 0.5 ? 0   : 0.03                   * (1.0 - isPlanned);
       float metallic         = state > 0.5 ? 0   : msTex.x                * (1.0 - scaleMetallic);
       float smoothness       = state > 0.5 ? 0.5 : min(0.8, msTex.y);
 
@@ -400,7 +396,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
                        state > 1.5 ? float3(0.35, 0.7, 3.5)       :
                        state > 0.5 ? float3(1.05, 1.05, 1.05)     :
                        shellEmissionColor;
-      float emissionFactor = state > 0.5 || cutOut > 0.5 ? 1.0 : colorControl;
+      float emissionFactor = state > 0.5 || isPlanned > 0.5 ? 1.0 : colorControl;
       finalAlpha = _EmissionMultiplier * emissionFactor;
       metallicFactor = saturate(metallic * 0.85 + 0.149);
       float perceptualRoughness = min(1, 1 - smoothness * 0.97);

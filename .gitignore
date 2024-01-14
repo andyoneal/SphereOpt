@@ -365,3 +365,5 @@ FodyWeavers.xsd
 .idea/
 /unity/sphereopt-bundle/Library/
 /unity/sphereopt-bundle/Temp/
+
+.DS_Store
