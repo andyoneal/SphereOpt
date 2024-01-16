@@ -82,7 +82,7 @@ namespace SphereOpt
             polygonPool = new PolygonData[64];
             hexProgressBuffer = new ComputeBuffer(64, 4);
             shellBuffer = new ComputeBuffer(11, 36);
-            polygonBuffer = new ComputeBuffer(64, 12);
+            polygonBuffer = new ComputeBuffer(64, 24);
             SetProps();
         }
 
@@ -136,7 +136,7 @@ namespace SphereOpt
             }
             polygonPool = destinationArray;
             polygonBuffer?.Release();
-            polygonBuffer = new ComputeBuffer(newCap, 12);
+            polygonBuffer = new ComputeBuffer(newCap, 24);
             props.SetBuffer(PolygonBuffer, polygonBuffer);
             polygonBufferIsDirty = true;
         }
@@ -144,7 +144,7 @@ namespace SphereOpt
         public int AddPolygonData(List<VectorLF3> polygon, VectorLF3[] polyn, bool clockwise) {
             if (polygonCursor + polygon.Count >= polygonPool.Length) SetCapacityPolygonPool(polygon.Count);
             for (var i = 0; i < polygon.Count; i++)
-            { 
+            {
                 polygonPool[polygonCursor + i].pos = polygon[i];
                 polygonPool[polygonCursor + i].normal = polyn[i];
             }
