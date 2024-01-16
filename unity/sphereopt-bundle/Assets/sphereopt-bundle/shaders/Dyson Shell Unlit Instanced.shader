@@ -250,48 +250,60 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
 
     float state = i.state_clock.x;
 
-    int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5);
+    uint polyCount = 0.5 + polyCount; //28 //r0.z
+    polyCount = polyCount < 1 ? 1 : min(380, polyCount);
+    uint closestPolygon = 0.5 + closestPolygon; //r0.w
+    int polyIndex = polyCount + closestPolygon; //r0.z
+    int prevIndex = polyIndex - 1; //r2.x
+    int nextIndex = polyIndex + 1; //r2.y
+    int nextnextIndex = polyIndex + 2; //r2.z
     
-    int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
-    int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
-    int polyVertIndex = polygonBaseIndex + closestPolygon;
+    float3 prevVert = polygonArr[prevIndex].xyz;
+    float3 thisVert = polygonArr[polyIndex].xyz;
+    float3 nextVert = polygonArr[nextIndex].xyz;
+    float3 nextnextVert = polygonArr[nextnextIndex].xyz;
     
-    int prevIndexOffset = closestPolygon == 0 ? polyCount - 1 : closestPolygon - 1;
-    int nextIndexOffset = fmod(closestPolygon + 1, polyCount); 
-    int nextnextIndexOffset = fmod(closestPolygon + 2, polyCount);
+    float3 prevNormal = polygonN[prevIndex].xyz;
+    float3 thisNormal = polygonN[polyIndex].xyz;
+    float3 nextNormal = polygonN[nextIndex].xyz;
     
-    int prevIndex = polygonBaseIndex + prevIndexOffset;
-    int nextIndex = polygonBaseIndex + nextIndexOffset;
-    int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
+    float3 thisToNext = nextVert - thisVert; //r3.xyz
+    int signThisToNext_Dot_PrevN = sign(dot(thisToNext, prevNormal)); //r0.w
     
-    float3 prevVert = _PolygonBuffer[prevIndex].pos;
-    float3 thisVert = _PolygonBuffer[polyVertIndex].pos;
+    float3 prevToPoint = i.objectPos.xyz - prevVert; //r3.xyz
+    float prevToPoint_Dot_PrevN = dot(prevToPoint, prevNormal); //r1.w
     
-    float3 prevNormal = normalize(cross(prevVert, thisVert));
-    float3 prevToPoint = input.objectPos.xyz - prevVert;
-    bool prevLineOutside = dot(prevToPoint, prevNormal) <= 0;
+    float3 nextToPoint = i.objectPos.xyz.xyz - nextVert; //r3.xyz
+    float nextToPoint_Dot_ThisN = dot(nextToPoint.xyz, thisNormal); //r2.x
     
-    float3 nextVert = _PolygonBuffer[nextIndex].pos;
+    float3 nextToNextnext = nextnextVert - nextVert; //r3.xyz
+    int signNextToNextnext_Dot_ThisN = sign(dot(nextToNextnext.xyz, thisNormal)); //r0.z
     
-    float3 thisNormal = normalize(cross(thisVert, nextVert));
-    float3 thisToNext = nextVert - thisVert;
-    bool thisAngleIsConvex = dot(thisToNext, prevNormal) > 0;
-    float3 nextToPoint = input.objectPos.xyz - nextVert;
-    bool thisLineOutside = dot(nextToPoint, thisNormal) <= 0;
+    float3 nextnextToPoint = i.objectPos.xyz.xyz - nextnextVert; //r3.xyz
+    float nextnextToPoint_Dot_NextN = dot(nextnextToPoint.xyz, nextNormal); //r2.y
     
-    float3 nextnextVert = _PolygonBuffer[nextnextIndex].pos;
+    signNextToNextnext_Dot_ThisN = _Clockwise * signNextToNextnext_Dot_ThisN; //r0.z
+    signThisToNext_Dot_PrevN = _Clockwise * signThisToNext_Dot_PrevN; //r0.w
     
-    float3 nextNormal = normalize(cross(nextVert, nextnextVert));
-    float3 nextToNextnext = nextnextVert - nextVert;
-    bool nextAngleIsConvex = dot(nextToNextnext, thisNormal) > 0;
-    float3 nextnextToPoint = input.objectPos.xyz - nextnextVert;
-    bool nextLineOutside = dot(nextnextToPoint, nextNormal) <= 0;
+    prevToPoint_Dot_PrevN = _Clockwise * prevToPoint_Dot_PrevN; //r1.w
+    nextToPoint_Dot_ThisN = _Clockwise * nextToPoint_Dot_ThisN; //r2.x
+    nextnextToPoint_Dot_NextN = _Clockwise * nextnextToPoint_Dot_NextN; //r2.y
     
-    if (prevLineOutside) discard;
+    float shouldDiscard = -1; //r3.x
+    if (signNextToNextnext_Dot_ThisN > 0 && signThisToNext_Dot_PrevN > 0) {
+      shouldDiscard = nextnextToPoint_Dot_NextN > 0 && nextToPoint_Dot_ThisN > 0 && prevToPoint_Dot_PrevN > 0 ? 1 : -1;
+    } else {
+      
+      float cond1 = (prevToPoint_Dot_PrevN > 0 || nextToPoint_Dot_ThisN > 0) && nextnextToPoint_Dot_NextN > 0 ? 1 : -1; //r3.y
+      float cond2 = prevToPoint_Dot_PrevN > 0 && (nextToPoint_Dot_ThisN > 0 || nextnextToPoint_Dot_NextN > 0) ? 1 : -1; //r1.w
+      float cond3 = (prevToPoint_Dot_PrevN > 0 || nextToPoint_Dot_ThisN > 0) && nextnextToPoint_Dot_NextN > 0 ? 1 : -1; //r2.x
+      
+      float cond4 = signNextToNextnext_Dot_ThisN <= 0 && signThisToNext_Dot_PrevN > 0 ? cond2 : cond3;
+      shouldDiscard = signNextToNextnext_Dot_ThisN > 0 && signThisToNext_Dot_PrevN <= 0 ? cond1 : cond4;
+    }
     
-    // if ((thisAngleIsConvex && ((nextAngleIsConvex && thisLineOutside) || prevLineOutside || (thisLineOutside && nextLineOutside))) || (nextAngleIsConvex && (nextLineOutside || (prevLineOutside && thisLineOutside))) || ((prevLineOutside && thisLineOutside) && nextLineOutside)) {
-    //     discard;
-    // }
+    if (shouldDiscard < 0)
+      discard;
 
     float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
     
