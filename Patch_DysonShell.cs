@@ -31,7 +31,7 @@ namespace SphereOpt
                     shellIndex = shellIndex,
                     nodeIndex = (int)__instance.uvs[i].x,
                     vertFillOrder = __instance.uvs[i].y,
-                    closestPolygon = __instance.clockwise ? (int)__instance.uv2s[i].y : polygon.Count - (int)__instance.uv2s[i].y - 1,
+                    closestPolygon = (int)__instance.uv2s[i].y,
                     axialCoords_xy =
                         (uint)(((__instance.vkeys[i] >> 16) - 10000) & 0x0000ffff | ((__instance.vkeys[i] & 0xFFFF) - 10000) << 16)
                 };
@@ -50,7 +50,8 @@ namespace SphereOpt
                 state = __instance.state,
                 polygonIndex = polygonIndex,
                 polyCount = polygon.Count,
-                center = __instance.center
+                center = __instance.center,
+                clockwise = __instance.clockwise ? 1 : -1
             };
             instShellLayer.AddShellData(shellIndex, shellData);
             instShellLayer.shellBufferIsDirty = true;

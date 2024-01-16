@@ -13,6 +13,7 @@ namespace SphereOpt
 
         public struct PolygonData {
             public Vector3 pos;
+            public Vector3 normal;
         }
 
         public struct HexData
@@ -33,6 +34,7 @@ namespace SphereOpt
             public int polyCount;
             public int polygonIndex;
             public Vector3 center;
+            public int clockwise;
         }
 
         public int layerId;
@@ -79,7 +81,7 @@ namespace SphereOpt
             shellPool = new ShellData[11];
             polygonPool = new PolygonData[64];
             hexProgressBuffer = new ComputeBuffer(64, 4);
-            shellBuffer = new ComputeBuffer(11, 32);
+            shellBuffer = new ComputeBuffer(11, 36);
             polygonBuffer = new ComputeBuffer(64, 12);
             SetProps();
         }
@@ -144,11 +146,7 @@ namespace SphereOpt
             for (var i = 0; i < polygon.Count; i++)
             { 
                 polygonPool[polygonCursor + i].pos = polygon[i];
-            }
-
-            if (!clockwise)
-            {
-                Array.Reverse(polygonPool, polygonCursor, polygon.Count);
+                polygonPool[polygonCursor + i].normal = polyn[i];
             }
 
             polygonBufferIsDirty = true;
@@ -167,7 +165,7 @@ namespace SphereOpt
             }
             shellPool = destinationArray;
             shellBuffer?.Release();
-            shellBuffer = new ComputeBuffer(newCap, 32);
+            shellBuffer = new ComputeBuffer(newCap, 36);
             props.SetBuffer(ShellBuffer, shellBuffer);
             shellBufferIsDirty = true;
         }

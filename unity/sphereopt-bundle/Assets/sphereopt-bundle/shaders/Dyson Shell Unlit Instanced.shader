@@ -60,6 +60,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
         int polyCount;
         int polygonIndex;
         float3 center;
+        int clockwise;
     };
 
     struct appdata_part {
@@ -206,6 +207,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float polygonIndex = _ShellBuffer[shellIndex].polygonIndex;
     float polyCount = _ShellBuffer[shellIndex].polyCount;
     float state = _ShellBuffer[shellIndex].state;
+    int clockwise = _ShellBuffer[shellIndex].clockwise;
     uint hexProgressIndex = progressBaseIndex + nodeIndex;
     float nodeProgress = _HexProgressBuffer[hexProgressIndex].progress;
     float scaleProgress = saturate(((1 + (0.28 / _Scale)) * nodeProgress - pow(vertFillOrder, 1.25)) / (0.28 / _Scale));
@@ -226,7 +228,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     o.pidx_close_pct_cnt.w = polyCount;
 
     o.state_clock.x = state;
-    o.state_clock.y = 1;
+    o.state_clock.y = clockwise;
 
     o.color.xyzw = linear_color; //move to frag?
 
@@ -249,23 +251,30 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     }
 
     float state = i.state_clock.x;
-
-    uint polyCount = 0.5 + polyCount; //28 //r0.z
-    polyCount = polyCount < 1 ? 1 : min(380, polyCount);
-    uint closestPolygon = 0.5 + closestPolygon; //r0.w
-    int polyIndex = polyCount + closestPolygon; //r0.z
-    int prevIndex = polyIndex - 1; //r2.x
-    int nextIndex = polyIndex + 1; //r2.y
-    int nextnextIndex = polyIndex + 2; //r2.z
+    int clockwise = i.state_clock.y;
     
-    float3 prevVert = polygonArr[prevIndex].xyz;
-    float3 thisVert = polygonArr[polyIndex].xyz;
-    float3 nextVert = polygonArr[nextIndex].xyz;
-    float3 nextnextVert = polygonArr[nextnextIndex].xyz;
+    int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
     
-    float3 prevNormal = polygonN[prevIndex].xyz;
-    float3 thisNormal = polygonN[polyIndex].xyz;
-    float3 nextNormal = polygonN[nextIndex].xyz;
+    int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
+    int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
+    int polyVertIndex = polygonBaseIndex + closestPolygon;
+    
+    int prevIndexOffset = closestPolygon == 0 ? polyCount - 1 : closestPolygon - 1;
+    int nextIndexOffset = fmod(closestPolygon + 1, polyCount); 
+    int nextnextIndexOffset = fmod(closestPolygon + 2, polyCount);
+    
+    int prevIndex = polygonBaseIndex + prevIndexOffset;
+    int nextIndex = polygonBaseIndex + nextIndexOffset;
+    int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
+    
+    float3 prevVert = _PolygonBuffer[prevIndex].pos;
+    float3 thisVert = _PolygonBuffer[polyVertIndex].pos;
+    float3 nextVert = _PolygonBuffer[nextIndex].pos;
+    float3 nextnextVert = _PolygonBuffer[nextnextIndex].pos;
+    
+    float3 prevNormal = _PolygonBuffer[prevIndex].normal;
+    float3 thisNormal = _PolygonBuffer[polyVertIndex].normal;
+    float3 nextNormal = _PolygonBuffer[nextIndex].normal;
     
     float3 thisToNext = nextVert - thisVert; //r3.xyz
     int signThisToNext_Dot_PrevN = sign(dot(thisToNext, prevNormal)); //r0.w
