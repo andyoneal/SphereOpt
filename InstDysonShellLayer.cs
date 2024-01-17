@@ -34,6 +34,7 @@ namespace SphereOpt
             public int polyCount;
             public int polygonIndex;
             public Vector3 center;
+            public int protoId;
         }
 
         public int layerId;
