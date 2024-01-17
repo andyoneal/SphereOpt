@@ -79,17 +79,35 @@ namespace SphereOpt
             Texture2DArray emissionTex2 = new Texture2DArray(emm2.width, emm2.height, 7, emm2.format, true);
             float[] emissionMultiplier = new float[7];
             
-            colorControlTex2.SetPixels(cc2.GetPixels(), 0);
-            emissionTex2.SetPixels(emm2.GetPixels(), 0);
+            for (int m = 0; m < cc2.mipmapCount; m++)
+            {
+                Graphics.CopyTexture(cc2, 0, m, colorControlTex2, 0, m);
+            }
+                
+            for (int m = 0; m < emm2.mipmapCount; m++)
+            {
+                Graphics.CopyTexture(emm2, 0, m, emissionTex2, 0, m);
+            }
+            // colorControlTex2.SetPixels(cc2.GetPixels(), 0);
+            // emissionTex2.SetPixels(emm2.GetPixels(), 0);
             emissionMultiplier[0] = material.GetFloat("_EmissionMultiplier");
             
             for (int i = 1; i < 7; i++) {
                 material = Resources.Load<Material>($"Dyson Sphere/Materials/dyson-shell-unlit-{i}");
                 cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
                 emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
+
+                for (int m = 0; m < cc2.mipmapCount; m++)
+                {
+                    Graphics.CopyTexture(cc2, 0, m, colorControlTex2, i, m);
+                }
                 
-                colorControlTex2.SetPixels(cc2.GetPixels(), i);
-                emissionTex2.SetPixels(emm2.GetPixels(), i);
+                for (int m = 0; m < emm2.mipmapCount; m++)
+                {
+                    Graphics.CopyTexture(emm2, 0, m, emissionTex2, i, m);
+                }
+                // colorControlTex2.SetPixels(cc2.GetPixels(), i);
+                // emissionTex2.SetPixels(emm2.GetPixels(), i);
                 emissionMultiplier[i] = material.GetFloat("_EmissionMultiplier");
             }
             

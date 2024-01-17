@@ -5,13 +5,10 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
     _NormalTex ("Normal Map", 2D) = "bump" {}
     _MSTex ("Metallic Smoothness (RA)", 2D) = "white" {}
     _EmissionTex ("Emission (RGB)", 2D) = "black" {}
-    _EmissionTex2 ("Emission Large (RGB)", 2D) = "black" {}
     _NoiseTex ("Noise Texture (R)", 2D) = "gray" {}
     _ColorControlTex ("Color Control", 2D) = "black" {}
-    _ColorControlTex2 ("Color Control Large", 2D) = "black" {}
     _AlbedoMultiplier ("漫反射倍率", Float) = 1
     _NormalMultiplier ("法线倍率", Float) = 1
-    _EmissionMultiplier ("自发光倍率", Float) = 5.5
     _CellSize ("细胞大小（是否有间隙）", Float) = 1
   }
   SubShader {
@@ -97,31 +94,13 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       sampler2D _NormalTex;
       sampler2D _MSTex;
       sampler2D _EmissionTex;
-      sampler2DArray _EmissionTex2;
+      UNITY_DECLARE_TEX2DARRAY(_EmissionTex2);
+      //sampler2DArray _EmissionTex2;
       sampler2D _ColorControlTex;
-      sampler2DArray _ColorControlTex2;
+      UNITY_DECLARE_TEX2DARRAY(_ColorControlTex2);
+      //sampler2DArray _ColorControlTex2;
 
       #include "UnityCG.cginc"
-
-float3 rotate_vector_fast(float3 v, float4 r){ 
-    return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
-}
-
-int isInside(int nextLineIsConvex, int prevLineIsConvex, int nextLineInside, int thisLineInside, int prevLineInside)
-{
-    bool nextConvex = nextLineIsConvex > 0;
-    bool prevConvex = prevLineIsConvex > 0;
-
-    bool nextInside = nextLineInside > 0;
-    bool thisInside = thisLineInside > 0;
-    bool prevInside = prevLineInside > 0;
-
-    return nextConvex && prevConvex && nextInside && thisInside && prevInside ? 1 : 
-                    nextConvex && !prevConvex && nextInside && (prevInside || thisInside) ? 1 :
-                    !nextConvex && prevConvex && prevInside && (thisInside || nextInside) ? 1 :
-                    !nextConvex && !prevConvex && (nextInside || prevInside || thisInside) ? 1 :
-                    -1;
-}
 
 struct v2f
 {
@@ -159,7 +138,8 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float distFromCenter = dot(normalize(shellCenterPos.xyz), normalize(hexMidPtPos));
     distFromCenter = renderPlace > 1.5 ? distFromCenter : distFromCenter * scaleGrid;
     float viewDistFalloff = 1 - min(4, max(0, 0.0001 * (length(_WorldSpaceCameraPos - hexMidPtPos) - 3000))) * 0.25;
-    float cellSize = _CellSize;
+    int protoId = _ShellBuffer[shellIndex].protoId + 0.5;
+    float cellSize = protoId > 0.5 ? 1.0 : 0.94;
     float scaledCellSize = distFromCenter * lerp(1, cellSize, viewDistFalloff) * _Scale;
 
     float3 z_axis = normalize(shellCenterPos);
@@ -208,7 +188,6 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float polygonIndex = _ShellBuffer[shellIndex].polygonIndex;
     float polyCount = _ShellBuffer[shellIndex].polyCount;
     float state = _ShellBuffer[shellIndex].state;
-    int protoId = _ShellBuffer[shellIndex].protoId;
     uint hexProgressIndex = progressBaseIndex + nodeIndex;
     float nodeProgress = _HexProgressBuffer[hexProgressIndex].progress;
     float scaleProgress = saturate(((1 + (0.28 / _Scale)) * nodeProgress - pow(vertFillOrder, 1.25)) / (0.28 / _Scale));
@@ -254,7 +233,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
 
     //uint polyCount = i.polyGroup_pctComplete_polyCount_state.z;
     float state = i.state_clock_protoid.x;
-    int protoId = i.state_clock_protoid.z;
+    int protoId = i.state_clock_protoid.z + 0.5;
 
     /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
     int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
@@ -403,14 +382,14 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float3 emissionTex_A = tex2Dbias(_EmissionTex, float4(uv.xy, 0, lodBias)).xyz;
     float3 emissionTex_B = tex2Dbias(_EmissionTex, float4(float2(1,1) - uv.yx, 0, lodBias)).xyz;
     float3 emissionTex = lerp(emissionTex_A.xyz, emissionTex_B.xyz, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float3 emissionTexTwo = tex2Dbias(_EmissionTex2, float4(scaledUV.xy, protoId, lodBias)).xyz;
+    float3 emissionTexTwo = UNITY_SAMPLE_TEX2DARRAY(_EmissionTex2, float3(scaledUV.xy, protoId)).xyz;
     //bool viewingSunFacingSide = dot(i.normal.xyz, viewDir.xyz) < 0;
     emissionAnim = viewingOutwardFacingSide ? 0 : saturate((emissionTexTwo.y * 2 + emissionTex.y) * emissionAnim);
 
     float colorControlTex_A = tex2Dbias(_ColorControlTex, float4(uv.xy, 0, lodBias)).x;
     float colorControlTex_B = tex2Dbias(_ColorControlTex, float4(float2(1,1) - uv.yx, 0, lodBias)).x;
     float colorControlTex = lerp(colorControlTex_A, colorControlTex_B, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float colorControlTexTwo = tex2Dbias(_ColorControlTex2, float4(scaledUV.xy, protoId, lodBias)).x;
+    float colorControlTexTwo = UNITY_SAMPLE_TEX2DARRAY(_ColorControlTex2, float3(scaledUV.xy, protoId)).x;
     float colorControl = saturate(colorControlTex + colorControlTexTwo);
     
     float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier[protoId]);

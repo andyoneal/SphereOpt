@@ -42,5 +42,14 @@
     <None Remove="shaders\Frame Inst REPLACE.shader" />
     <None Remove="shaders\Frame LOD.compute" />
     <None Remove="shaders\Node Inst REPLACE.shader" />
+    <None Remove="unity\**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Remove="unity\**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Remove="unity\**" />
   </ItemGroup>
 </Project>
