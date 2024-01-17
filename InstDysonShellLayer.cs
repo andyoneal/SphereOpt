@@ -10,11 +10,13 @@ namespace SphereOpt
         {
             public float progress;
         }
+        public static int HEXPROGRESSDATA_STRIDE = 4;
 
         public struct PolygonData {
             public Vector3 pos;
             public Vector3 normal;
         }
+        public static int POLYGONDATA_STRIDE = 24;
 
         public struct HexData
         {
@@ -25,6 +27,7 @@ namespace SphereOpt
             public int closestPolygon;
             public uint axialCoords_xy;
         }
+        public static int HEXDATA_STRIDE = 32;
 
         public struct ShellData
         {
@@ -36,6 +39,7 @@ namespace SphereOpt
             public Vector3 center;
             public int protoId;
         }
+        public static int SHELLDATA_STRIDE = 36;
 
         public int layerId;
 
@@ -80,9 +84,9 @@ namespace SphereOpt
             hexPool = new List<HexData>();
             shellPool = new ShellData[11];
             polygonPool = new PolygonData[64];
-            hexProgressBuffer = new ComputeBuffer(64, 4);
-            shellBuffer = new ComputeBuffer(11, 32);
-            polygonBuffer = new ComputeBuffer(64, 24);
+            hexProgressBuffer = new ComputeBuffer(64, HEXPROGRESSDATA_STRIDE);
+            shellBuffer = new ComputeBuffer(11, SHELLDATA_STRIDE);
+            polygonBuffer = new ComputeBuffer(64, POLYGONDATA_STRIDE);
             SetProps();
         }
 
@@ -136,7 +140,7 @@ namespace SphereOpt
             }
             polygonPool = destinationArray;
             polygonBuffer?.Release();
-            polygonBuffer = new ComputeBuffer(newCap, 24);
+            polygonBuffer = new ComputeBuffer(newCap, POLYGONDATA_STRIDE);
             props.SetBuffer(PolygonBuffer, polygonBuffer);
             polygonBufferIsDirty = true;
         }
@@ -176,7 +180,7 @@ namespace SphereOpt
             }
             shellPool = destinationArray;
             shellBuffer?.Release();
-            shellBuffer = new ComputeBuffer(newCap, 32);
+            shellBuffer = new ComputeBuffer(newCap, SHELLDATA_STRIDE);
             props.SetBuffer(ShellBuffer, shellBuffer);
             shellBufferIsDirty = true;
         }
@@ -197,7 +201,7 @@ namespace SphereOpt
             }
             hexProgressPool = destinationArray;
             hexProgressBuffer?.Release();
-            hexProgressBuffer = new ComputeBuffer(newCap, 4);
+            hexProgressBuffer = new ComputeBuffer(newCap, HEXPROGRESSDATA_STRIDE);
             props.SetBuffer(HexProgressBuffer, hexProgressBuffer);
             hexProgressBufferIsDirty = true;
         }
@@ -228,7 +232,7 @@ namespace SphereOpt
                 if (hexBuffer == null || hexBuffer.count != hexPool.Count)
                 {
                     hexBuffer?.Release();
-                    hexBuffer = new ComputeBuffer(hexPool.Count, 32);
+                    hexBuffer = new ComputeBuffer(hexPool.Count, HEXDATA_STRIDE);
                     props.SetBuffer(HexBuffer, hexBuffer);
                 }
 
