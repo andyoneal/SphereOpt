@@ -72,21 +72,21 @@ namespace SphereOpt
             _HexMesh.triangles = newTris;
             
             Material material = Resources.Load<Material>("Dyson Sphere/Materials/dyson-shell-unlit-0");
-            Texture2D cc2 = material.GetTexture("_ColorControlTex2");
-            Texture2D emm2 = material.GetTexture("_EmissionTex2");
+            Texture2D cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
+            Texture2D emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
             
             Texture2DArray colorControlTex2 = new Texture2DArray(cc2.width, cc2.height, 7, cc2.format, true);
             Texture2DArray emissionTex2 = new Texture2DArray(emm2.width, emm2.height, 7, emm2.format, true);
-            float[] emmissionMultiplier = new float[7];
+            float[] emissionMultiplier = new float[7];
             
             colorControlTex2.SetPixels(cc2.GetPixels(), 0);
             emissionTex2.SetPixels(emm2.GetPixels(), 0);
             emissionMultiplier[0] = material.GetFloat("_EmissionMultiplier");
             
             for (int i = 1; i < 7; i++) {
-                material = Resources.Load<Material>("Dyson Sphere/Materials/dyson-shell-unlit-" + i);
-                cc2 = material.GetTexture("_ColorControlTex2");
-                emm2 = material.GetTexture("_EmissionTex2");
+                material = Resources.Load<Material>($"Dyson Sphere/Materials/dyson-shell-unlit-{i}");
+                cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
+                emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
                 
                 colorControlTex2.SetPixels(cc2.GetPixels(), i);
                 emissionTex2.SetPixels(emm2.GetPixels(), i);
