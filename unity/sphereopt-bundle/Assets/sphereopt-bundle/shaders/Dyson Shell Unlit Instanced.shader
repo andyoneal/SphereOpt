@@ -235,6 +235,38 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     return o;
 }
 
+bool IsPointOutsidePolygonOnSphereFace(float3[] polygon, int numVertices, float3 testPoint)
+{
+    // Assuming the normal of the polygon plane is consistent for all edges
+    // and can be found using any three non-collinear points of the polygon
+    float3 normal = cross(_PolygonBuffer[1] - _PolygonBuffer[0], _PolygonBuffer[2] - _PolygonBuffer[0]);
+
+    for (int i = 0; i < numVertices; i++)
+    {
+        int nextIndex = i + 1;
+        nextIndex = i == numVertices ? 0 : nextIndex;
+        
+        float3 edgeVec = _PolygonBuffer[nextIndex] - _PolygonBuffer[i];
+
+        // Create a normal for the edge in the plane of the polygon
+        float3 edgeNormal = cross(normal, edgeVec);
+
+        // Vector from edge start to the test point
+        float3 vecToTestPoint = testPoint - _PolygonBuffer[i];
+
+        // Check if the point is outside this edge
+        if (dot(edgeNormal, vecToTestPoint) > 0)
+        {
+            // Test point is outside the polygon
+            return true;
+        }
+    }
+
+    // Point is inside the polygon
+    return false;
+}
+
+
   fout frag(v2f i, bool viewingOutwardFacingSide : SV_IsFrontFace, float4 screenPos : SV_POSITION)
   {
 
@@ -259,6 +291,9 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
     int polyVertIndex = polygonBaseIndex + closestPolygon;
     
+    bool shouldDiscard = IsPointOutsidePolygonOnSphereFace(polyCount, i.objectPos.xyz);
+    
+    /*
     int prevIndexOffset = closestPolygon == 0 ? polyCount - 1 : closestPolygon - 1;
     int nextIndexOffset = fmod(closestPolygon + 1, polyCount); 
     int nextnextIndexOffset = fmod(closestPolygon + 2, polyCount);
@@ -313,7 +348,11 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     
     if (shouldDiscard < 0)
       discard;
-
+    */
+    
+    if (shouldDiscard)
+      discard;
+    
     float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
     
     float2 axialCoords = i.uv_axialCoords.zw;
