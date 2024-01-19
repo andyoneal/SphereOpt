@@ -140,6 +140,37 @@ struct fout
     float4 sv_target : SV_Target0;
 };
 
+bool IsPointOutsidePolygonOnSphereFace(int numVertices, float3 testPoint)
+{
+    // Assuming the normal of the polygon plane is consistent for all edges
+    // and can be found using any three non-collinear points of the polygon
+    float3 normal = cross(_PolygonBuffer[1] - _PolygonBuffer[0], _PolygonBuffer[2] - _PolygonBuffer[0]);
+
+    for (int i = 0; i < numVertices; i++)
+    {
+        int nextIndex = i + 1;
+        nextIndex = i == numVertices ? 0 : nextIndex;
+        
+        float3 edgeVec = _PolygonBuffer[nextIndex] - _PolygonBuffer[i];
+
+        // Create a normal for the edge in the plane of the polygon
+        float3 edgeNormal = cross(normal, edgeVec);
+
+        // Vector from edge start to the test point
+        float3 vecToTestPoint = testPoint - _PolygonBuffer[i];
+
+        // Check if the point is outside this edge
+        if (dot(edgeNormal, vecToTestPoint) > 0)
+        {
+            // Test point is outside the polygon
+            return true;
+        }
+    }
+
+    // Point is inside the polygon
+    return false;
+}
+
 v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
 {
     v2f o;
@@ -249,9 +280,9 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     }
 
     float state = i.state_clock.x;
-
+    
     int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5);
-
+    /*
     int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
     int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
     int polyVertIndex = polygonBaseIndex + closestPolygon;
@@ -291,6 +322,10 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     if ((thisAngleIsConvex && ((nextAngleIsConvex && thisLineOutside) || prevLineOutside || (thisLineOutside && nextLineOutside))) || (nextAngleIsConvex && (nextLineOutside || (prevLineOutside && thisLineOutside))) || ((prevLineOutside && thisLineOutside) && nextLineOutside)) {
         discard;
     }
+    */
+    
+    bool shouldDiscard = IsPointOutsidePolygonOnSphereFace(polyCount, i.objectPos.xyz);
+    
 
     float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
     
