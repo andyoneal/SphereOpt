@@ -14,6 +14,7 @@ namespace SphereOpt
         private static int csKernelId;
         private static uint csThreads;
         private static ComputeBuffer argBuffer;
+        private static MaterialPropertyBlock mpb = new MaterialPropertyBlock();
 
         private static StarData starData;
         private static GameData gameData;
@@ -227,7 +228,6 @@ namespace SphereOpt
             frameLODShader.SetMatrix(UnityMatrixVp, p * v);
             float fov = cam.fieldOfView;
             frameLODShader.SetFloat(FOV, fov);
-            var mpb = new MaterialPropertyBlock();
             mpb.SetVectorArray(LayerRotations, layerRotations);
             for (var b = 0; b < DysonSphereSegmentRenderer.totalProtoCount; b++)
             {

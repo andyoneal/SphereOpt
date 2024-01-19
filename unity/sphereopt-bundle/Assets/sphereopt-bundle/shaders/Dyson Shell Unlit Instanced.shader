@@ -35,6 +35,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
     struct PolygonData
     {
         float3 pos;
+        float3 normal;
     };
 
     struct HexProgressData
@@ -101,26 +102,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       sampler2D _ColorControlTex2;
 
       #include "UnityCG.cginc"
-
-float3 rotate_vector_fast(float3 v, float4 r){ 
-    return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
-}
-
-int isInside(int nextLineIsConvex, int prevLineIsConvex, int nextLineInside, int thisLineInside, int prevLineInside)
-{
-    bool nextConvex = nextLineIsConvex > 0;
-    bool prevConvex = prevLineIsConvex > 0;
-
-    bool nextInside = nextLineInside > 0;
-    bool thisInside = thisLineInside > 0;
-    bool prevInside = prevLineInside > 0;
-
-    return nextConvex && prevConvex && nextInside && thisInside && prevInside ? 1 : 
-                    nextConvex && !prevConvex && nextInside && (prevInside || thisInside) ? 1 :
-                    !nextConvex && prevConvex && prevInside && (thisInside || nextInside) ? 1 :
-                    !nextConvex && !prevConvex && (nextInside || prevInside || thisInside) ? 1 :
-                    -1;
-}
 
 struct v2f
 {
@@ -326,12 +307,12 @@ bool IsPointOutsidePolygonOnSphereFace(float3[] polygon, int numVertices, float3
     float3 nextnextToPoint = i.objectPos.xyz.xyz - nextnextVert; //r3.xyz
     float nextnextToPoint_Dot_NextN = dot(nextnextToPoint.xyz, nextNormal); //r2.y
     
-    signNextToNextnext_Dot_ThisN = _Clockwise * signNextToNextnext_Dot_ThisN; //r0.z
-    signThisToNext_Dot_PrevN = _Clockwise * signThisToNext_Dot_PrevN; //r0.w
+    signNextToNextnext_Dot_ThisN = clockwise * signNextToNextnext_Dot_ThisN; //r0.z
+    signThisToNext_Dot_PrevN = clockwise * signThisToNext_Dot_PrevN; //r0.w
     
-    prevToPoint_Dot_PrevN = _Clockwise * prevToPoint_Dot_PrevN; //r1.w
-    nextToPoint_Dot_ThisN = _Clockwise * nextToPoint_Dot_ThisN; //r2.x
-    nextnextToPoint_Dot_NextN = _Clockwise * nextnextToPoint_Dot_NextN; //r2.y
+    prevToPoint_Dot_PrevN = clockwise * prevToPoint_Dot_PrevN; //r1.w
+    nextToPoint_Dot_ThisN = clockwise * nextToPoint_Dot_ThisN; //r2.x
+    nextnextToPoint_Dot_NextN = clockwise * nextnextToPoint_Dot_NextN; //r2.y
     
     float shouldDiscard = -1; //r3.x
     if (signNextToNextnext_Dot_ThisN > 0 && signThisToNext_Dot_PrevN > 0) {
