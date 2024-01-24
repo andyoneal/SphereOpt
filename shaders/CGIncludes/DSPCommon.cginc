@@ -140,32 +140,42 @@ float3 calculateBinormal(float4 tangent, float3 normal ) {
 }
 
 UNITY_DECLARE_TEXCUBE(_Global_PGI);
+float _PGI_Gray;
 
 /* What image is reflected in metallic surfaces and how reflective is it? */
-float3 reflection(float perceptualRoughness, float3 metallicLow, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
-    float upDirMagSqr = dot(upDir, upDir);
-    bool validUpDirY = upDirMagSqr > 0.01 && upDir.y < 0.9999;
-    float3 xaxis = validUpDirY ? normalize(cross(upDir.zxy, float3(0, 0, 1))) : float3(0, 1, 0);
-    bool validUpDirXY = dot(xaxis, xaxis) > 0.01 && upDirMagSqr > 0.01;
-    float3 zaxis = validUpDirXY ? normalize(cross(xaxis.yzx, upDir)) : float3(0, 0, 1);
-
-    float3 worldReflect = reflect(-viewDir, worldNormal);
-    float3 reflectDir;
-    reflectDir.x = dot(worldReflect.zxy, -xaxis);
-    reflectDir.y = dot(worldReflect, upDir);
-    reflectDir.z = dot(worldReflect, -zaxis);
-
-    float reflectLOD = 10.0 * pow(perceptualRoughness, 0.4);
-    float3 g_PGI = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, reflectDir, reflectLOD);
-
-    float scaled_metallicLow = metallicLow * 0.7 + 0.3;
-    reflectivity = scaled_metallicLow * (1.0 - perceptualRoughness);
-
-    return g_PGI * reflectivity;
+float3 reflection(float perceptualRoughness, float3 metallic, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
+    bool validUpDir = dot(upDir, upDir) > 0.01;
+    bool upDirNotStraightUp = upDir.y < 0.9999;
+    
+    float3 rightDir = normalize(cross(upDir, float3(0, 1, 0)));
+    rightDir = validUpDir && upDirNotStraightUp ? rightDir : float3(1, 0, 0);
+    
+    bool validRightDir = dot(rightDir, rightDir) > 0.01;
+    
+    float3 fwdDir = normalize(cross(rightDir, upDir));
+    fwdDir = validUpDir && validRightDir ? fwdDir : float3(0, 0, 1);
+    
+    float3 reflectDir = reflect(-viewDir, worldNormal);
+    
+    float3 worldReflect;
+    worldReflect.x = dot(reflectDir, -rightDir);
+    worldReflect.y = dot(reflectDir, upDir);
+    worldReflect.z = dot(reflectDir, -fwdDir);
+    
+    float lod = 10.0 * pow(perceptualRoughness, 0.4);
+    float3 reflectColor = texCUBElod(_Global_PGI, float4(worldReflect, lod)).xyz;
+    float greyscaleReflectColor = dot(reflectColor, float3(0.29, 0.58, 0.13));
+    reflectColor = lerp(reflectColor, greyscaleReflectColor.xxx, _PGI_Gray);
+    
+    float scaledMetallic = metallic * 0.7 + 0.3;
+    float smoothness = 1.0 - perceptualRoughness;
+    reflectivity = scaledMetallic * smoothness;
+    
+    return reflectColor * reflectivity;
 }
 
 float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2, float3 lightColorScreen) {
-    float3 sunLightColor = lerp(sunlightColor, float3(1,1,1), lightColorScreen);
+    sunlightColor = lerp(sunlightColor, float3(1,1,1), lightColorScreen);
 
     float3 sunsetColor = float3(1,1,1);
     if (upDotL <= 1) {
@@ -183,7 +193,7 @@ float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetC
         sunsetColor = upDotL >  0.2 ? blendDay     : sunsetColor.xyz;
     }
 
-    return sunsetColor.xyz * sunLightColor.xyz;
+    return sunsetColor.xyz * sunlightColor.xyz;
 }
 
 float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
