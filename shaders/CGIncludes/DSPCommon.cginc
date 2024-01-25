@@ -163,7 +163,7 @@ float3 reflection(float perceptualRoughness, float3 metallic, float3 upDir, floa
     worldReflect.z = dot(reflectDir, -fwdDir);
     
     float lod = 10.0 * pow(perceptualRoughness, 0.4);
-    float3 reflectColor = texCUBElod(_Global_PGI, float4(worldReflect, lod)).xyz;
+    float3 reflectColor = UNITY_SAMPLE_TEXCUBE_LOD(_Global_PGI, worldReflect, lod).xyz;
     float greyscaleReflectColor = dot(reflectColor, float3(0.29, 0.58, 0.13));
     reflectColor = lerp(reflectColor, greyscaleReflectColor.xxx, _PGI_Gray);
     
