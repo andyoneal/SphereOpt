@@ -278,40 +278,38 @@ Shader "VF Shaders/Batching/Belt Instancing" {
                 float3 ambientLight = ambientColor * saturate(NdotUp * 0.3 + 0.7); //r10.xyz
                 ambientLight = ambientLight * pow(unclamped_NdotL * 0.35 + 1.0, 3.0); //r3.xyw
                 
-                //headlamp
-                float3 headlampLight = float3(0, 0, 0); //r1.xyz
+                float3 headlampLight = float3(0, 0, 0);
                 if (_Global_PointLightPos.w >= 0.5) {
-                    float fadeIn = saturate(5 * dot(-upDir.xyz, _WorldSpaceLightPos0.xyz));
-                    float headlampPower = fadeIn * saturate(length(_Global_PointLightPos.xyz) - 5); //r7.w //diff
+                    float fadeIn = saturate(5 * dot(-upDir.xyz, lightDir));
+                    float headlampPower = fadeIn * saturate(length(_Global_PointLightPos.xyz) - 5.0);
                     
-                    float3 objToHeadlamp = _Global_PointLightPos.xyz - upDir.xyz * (length(_Global_PointLightPos.xyz) - 5); //r10.xyz
-                    float distToHeadlamp = length(objToHeadlamp.xyz); //r6.w
+                    float3 objToHeadlamp = _Global_PointLightPos.xyz - upDir.xyz * (length(_Global_PointLightPos.xyz) - 5);
+                    float distToHeadlamp = length(objToHeadlamp.xyz);
                     
-                    float falloff = pow(max(0, (20 - distToHeadlamp) / 20.0), 2.0); //r9.w
+                    float falloff = pow(max(0, (20 - distToHeadlamp) / 20.0), 2.0);
                     
-                    float3 headlampDir = objToHeadlamp.xyz / distToHeadlamp; //r10.xyz
+                    float3 headlampDir = objToHeadlamp / distToHeadlamp;
                     
-                    float scaledHeadlampPower = saturate(dot(headlampDir, worldNormal)); //r1.x
-                    scaledHeadlampPower = scaledHeadlampPower * falloff * headlampPower; //r1.x
+                    float scaledHeadlampPower = saturate(dot(headlampDir, worldNormal));
+                    scaledHeadlampPower = scaledHeadlampPower * falloff * headlampPower;
                     
                     headlampLight = distToHeadlamp < 0.001 ? float3(1.3, 1.1, 0.6) * headlampPower : float3(1.3, 1.1, 0.6) * scaledHeadlampPower;
                 }
-                  
-                //extra headlamp
-                float3 reflectedHeadlampLight = float3(0, 0, 0); //r0.yzw
+                
+                float3 reflectedHeadlampLight = float3(0, 0, 0);
                 if (_Global_PointLightPos.w >= 0.5) {
-                    float fadeIn = saturate(5 * dot(-upDir.xyz, _WorldSpaceLightPos0.xyz));
-                    float headlampPower = fadeIn * saturate(length(_Global_PointLightPos.xyz) - 20); //r0.w
+                    float fadeIn = saturate(5 * dot(-upDir.xyz, lightDir));
+                    float headlampPower = fadeIn * saturate(length(_Global_PointLightPos.xyz) - 20.0);
                     
-                    float3 objToHeadlamp = _Global_PointLightPos.xyz - upDir.xyz * (length(_Global_PointLightPos.xyz) - 20); //r4.xyz
-                    float distToHeadlamp = length(objToHeadlamp); //r0.z
+                    float3 objToHeadlamp = _Global_PointLightPos.xyz - upDir.xyz * (length(_Global_PointLightPos.xyz) - 20);
+                    float distToHeadlamp = length(objToHeadlamp);
                     
-                    float falloff = pow(max(0, (40 - distToHeadlamp) / 40.0), 2.0); //r2.w
+                    float falloff = pow(max(0, (40 - distToHeadlamp) / 40.0), 2.0);
                     
-                    float3 headlampDir = objToHeadlamp / distToHeadlamp; //r4.xyz
+                    float3 headlampDir = objToHeadlamp / distToHeadlamp;
                     float3 reflectDir = reflect(-viewDir, worldNormal);
                     
-                    float scaledHeadlampPower = saturate(dot(reflectDir, headlampDir)); //r6 = reflect() from reflection() :(
+                    float scaledHeadlampPower = saturate(dot(headlampDir, reflectDir));
                     scaledHeadlampPower = metalSmooth.y * 20.0 * pow(scaledHeadlampPower, pow(1000.0, metalSmooth.y));
                     scaledHeadlampPower = scaledHeadlampPower * falloff * headlampPower;
                     
@@ -333,8 +331,6 @@ Shader "VF Shaders/Batching/Belt Instancing" {
                 float3 finalColor = ambientAndDiffuseLight + specularLight; //r0.xyz
                 finalColor = lerp(finalColor, reflectColor, reflectivity);
                 
-                
-                //finalize
                 float luminance = dot(finalColor.xyz, float3(0.3, 0.6, 0.1)); //r0.w
                 finalColor.xyz = luminance > 1.0 ? (finalColor / luminance) * (log(log(luminance) + 1) + 1) : finalColor;
                 
