@@ -97,6 +97,11 @@ Shader "VF Shaders/Forward/Unlit DFRanger Effect" {
                 float2 animFrame = sin(timeinSec * float2(417.0, 771.0)) * float2(0.06, 0.06) + float2(1.0, 1.0);
                 
                 int colorX = (int)(v.color.x * 255.0 + 0.5);
+                //101: "Flare"
+                //102: "Burn"
+                //103: "Flame0"
+                //104: "FlameL"
+                //>104: more flame
                 
                 float finalVertZ = v.vertex.z - 0.3;
                 float3 offset = float3(0.0, 0.0, 0.0);
