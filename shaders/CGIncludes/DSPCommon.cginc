@@ -2,6 +2,9 @@
 
 #define INV_TEN_PI 0.0318309888
 
+UNITY_DECLARE_TEXCUBE(_Global_PGI);
+float _PGI_Gray;
+
 struct GPUOBJECT
 {
     uint objId;
@@ -20,6 +23,16 @@ struct AnimData
 
 float3 rotate_vector_fast(float3 v, float4 r){
     return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
+}
+
+float3 GammaToLinear_Approx(float c)
+{
+    return pow((c + 0.055)/1.055, 2.4);
+}
+
+float3 GammaToLinear_Approx(float3 c)
+{
+    return pow((c + 0.055)/1.055, 2.4);
 }
 
 float SchlickFresnel_Approx(float F0, float vDotH)
@@ -78,7 +91,6 @@ float GGX(float roughness, float metallic, float nDotH, float nDotV, float nDotL
     float F = SchlickFresnel_Approx(metallic, vDotH);
 
     return (D * F * G) / 4.0;
-    //should be (4.0 * nDotV * nDotL)
 }
 
 #if defined(_ENABLE_VFINST)
@@ -139,8 +151,7 @@ float3 calculateBinormal(float4 tangent, float3 normal ) {
     return binormal;
 }
 
-UNITY_DECLARE_TEXCUBE(_Global_PGI);
-float _PGI_Gray;
+
 
 /* What image is reflected in metallic surfaces and how reflective is it? */
 float3 reflection(float perceptualRoughness, float3 metallic, float3 upDir, float3 viewDir, float3 worldNormal, out float reflectivity) {
@@ -198,4 +209,17 @@ float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetC
 
 float3 calculateSunlightColor(float3 sunlightColor, float upDotL, float3 sunsetColor0, float3 sunsetColor1, float3 sunsetColor2) {
     return calculateSunlightColor(sunlightColor, upDotL, sunsetColor0, sunsetColor1, sunsetColor2, float3(0,0,0));
+}
+
+float3 calculateAmbientColor(float3 upDir, float3 lightDir, float3 ambientColor0, float3 ambientColor1, float3 ambientColor2) {
+    //UpdotL: position of star in the sky, relative to the object.
+    //1 is noon
+    //0 is sunrise/sunset
+    //-1 is midnight
+    float UpdotL = dot(upDir, lightDir);
+    
+    //starting when the star is below the horizon, lerp from ambient2 to ambient1 to ambient0 at noon, then back down again
+    float3 ambientTwilight = lerp(ambientColor2, ambientColor1, saturate(UpdotL * 3.0 + 1)); //-33% to 0%
+    float3 ambientLowSun = lerp(ambientColor1, ambientColor0, saturate(UpdotL * 3.0)); // 0% - 33%
+    return UpdotL > 0 ? ambientLowSun : ambientTwilight;
 }

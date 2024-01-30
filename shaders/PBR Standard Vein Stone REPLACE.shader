@@ -384,6 +384,7 @@ Shader "VF Shaders/Forward/PBR Standard Vein Stone REPLACE" {
             #pragma fragment frag
             #pragma target 5.0
             #pragma multi_compile_shadowcaster
+            #pragma enable_d3d11_debug_symbols
             
             #include "UnityCG.cginc"
             #include "AutoLight.cginc"
