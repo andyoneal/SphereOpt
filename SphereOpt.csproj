@@ -22,7 +22,7 @@
     </PackageReference>
     <PackageReference Include="BepInEx.Core" Version="5.4.17" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
-    <PackageReference Include="DysonSphereProgram.GameLibs" Version="0.10.28.20779-r.0" />
+    <PackageReference Include="DysonSphereProgram.GameLibs" Version="0.10.29.21869-r.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.7.0" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.4.0">
       <PrivateAssets>all</PrivateAssets>
@@ -33,7 +33,7 @@
   </ItemGroup>
   
   <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   
   <ItemGroup>
@@ -42,5 +42,14 @@
     <None Remove="shaders\Frame Inst REPLACE.shader" />
     <None Remove="shaders\Frame LOD.compute" />
     <None Remove="shaders\Node Inst REPLACE.shader" />
+    <None Remove="unity\**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Remove="unity\**" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Remove="unity\**" />
   </ItemGroup>
 </Project>

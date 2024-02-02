@@ -50,7 +50,8 @@ namespace SphereOpt
                 state = __instance.state,
                 polygonIndex = polygonIndex,
                 polyCount = polygon.Count,
-                center = __instance.center
+                center = __instance.center,
+                protoId = __instance.protoId
             };
             instShellLayer.AddShellData(shellIndex, shellData);
             instShellLayer.shellBufferIsDirty = true;

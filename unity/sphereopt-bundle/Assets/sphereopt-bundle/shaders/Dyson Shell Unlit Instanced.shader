@@ -1,17 +1,14 @@
 Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
   Properties {
-    _Color ("Color", Vector) = (1,1,1,1)
+    _Color ("Color", Color) = (1,1,1,1)
     _MainTex ("Albedo (RGB)", 2D) = "white" {}
     _NormalTex ("Normal Map", 2D) = "bump" {}
     _MSTex ("Metallic Smoothness (RA)", 2D) = "white" {}
     _EmissionTex ("Emission (RGB)", 2D) = "black" {}
-    _EmissionTex2 ("Emission Large (RGB)", 2D) = "black" {}
     _NoiseTex ("Noise Texture (R)", 2D) = "gray" {}
     _ColorControlTex ("Color Control", 2D) = "black" {}
-    _ColorControlTex2 ("Color Control Large", 2D) = "black" {}
     _AlbedoMultiplier ("漫反射倍率", Float) = 1
     _NormalMultiplier ("法线倍率", Float) = 1
-    _EmissionMultiplier ("自发光倍率", Float) = 5.5
     _CellSize ("细胞大小（是否有间隙）", Float) = 1
   }
   SubShader {
@@ -61,6 +58,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
         int polyCount;
         int polygonIndex;
         float3 center;
+        int protoId;
     };
 
     struct appdata_part {
@@ -82,7 +80,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       int _Global_DS_PaintingGridMode;
       float _AlbedoMultiplier;
       float _NormalMultiplier;
-      float _EmissionMultiplier;
+      float _EmissionMultiplier[7];
       int _Global_IsMenuDemo;
       int _Global_DS_RenderPlace;
       float _CellSize;
@@ -96,31 +94,13 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       sampler2D _NormalTex;
       sampler2D _MSTex;
       sampler2D _EmissionTex;
-      sampler2D _EmissionTex2;
+      UNITY_DECLARE_TEX2DARRAY(_EmissionTex2);
+      //sampler2DArray _EmissionTex2;
       sampler2D _ColorControlTex;
-      sampler2D _ColorControlTex2;
+      UNITY_DECLARE_TEX2DARRAY(_ColorControlTex2);
+      //sampler2DArray _ColorControlTex2;
 
       #include "UnityCG.cginc"
-
-float3 rotate_vector_fast(float3 v, float4 r){ 
-    return v + cross(2.0 * r.xyz, cross(r.xyz, v) + r.w * v);
-}
-
-int isInside(int nextLineIsConvex, int prevLineIsConvex, int nextLineInside, int thisLineInside, int prevLineInside)
-{
-    bool nextConvex = nextLineIsConvex > 0;
-    bool prevConvex = prevLineIsConvex > 0;
-
-    bool nextInside = nextLineInside > 0;
-    bool thisInside = thisLineInside > 0;
-    bool prevInside = prevLineInside > 0;
-
-    return nextConvex && prevConvex && nextInside && thisInside && prevInside ? 1 : 
-                    nextConvex && !prevConvex && nextInside && (prevInside || thisInside) ? 1 :
-                    !nextConvex && prevConvex && prevInside && (thisInside || nextInside) ? 1 :
-                    !nextConvex && !prevConvex && (nextInside || prevInside || thisInside) ? 1 :
-                    -1;
-}
 
 struct v2f
 {
@@ -132,7 +112,7 @@ struct v2f
     float3 binormal : TEXCOORD4;
     float3 normal : TEXCOORD5;
     float4 pidx_close_pct_cnt : TEXCOORD6;
-    float2 state_clock : TEXCOORD7;
+    float3 state_clock_protoid : TEXCOORD7;
     float4 color : TEXCOORD8;
 };
 
@@ -158,7 +138,8 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float distFromCenter = dot(normalize(shellCenterPos.xyz), normalize(hexMidPtPos));
     distFromCenter = renderPlace > 1.5 ? distFromCenter : distFromCenter * scaleGrid;
     float viewDistFalloff = 1 - min(4, max(0, 0.0001 * (length(_WorldSpaceCameraPos - hexMidPtPos) - 3000))) * 0.25;
-    float cellSize = _CellSize;
+    int protoId = _ShellBuffer[shellIndex].protoId + 0.5;
+    float cellSize = protoId > 0.5 ? 1.0 : 0.94;
     float scaledCellSize = distFromCenter * lerp(1, cellSize, viewDistFalloff) * _Scale;
 
     float3 z_axis = normalize(shellCenterPos);
@@ -226,8 +207,9 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     o.pidx_close_pct_cnt.z = scaleProgress;
     o.pidx_close_pct_cnt.w = polyCount;
 
-    o.state_clock.x = state;
-    o.state_clock.y = 1;
+    o.state_clock_protoid.x = state;
+    o.state_clock_protoid.y = 1;
+    o.state_clock_protoid.z = protoId;
 
     o.color.xyzw = linear_color; //move to frag?
 
@@ -250,7 +232,8 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     }
 
     //uint polyCount = i.polyGroup_pctComplete_polyCount_state.z;
-    float state = i.state_clock.x;
+    float state = i.state_clock_protoid.x;
+    int protoId = i.state_clock_protoid.z + 0.5;
 
     /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
     int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
@@ -267,7 +250,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     int nextIndex = polygonBaseIndex + nextIndexOffset;
     int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
 
-    int clockwise = 1;//sign(i.state_clock.y);
+    int clockwise = 1;//sign(i.state_clock_protoid.y);
 
     //TODO: discard pixels
     float3 prevLineNormal = _PolygonBuffer[prevIndex].normal;
@@ -399,23 +382,23 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
     float3 emissionTex_A = tex2Dbias(_EmissionTex, float4(uv.xy, 0, lodBias)).xyz;
     float3 emissionTex_B = tex2Dbias(_EmissionTex, float4(float2(1,1) - uv.yx, 0, lodBias)).xyz;
     float3 emissionTex = lerp(emissionTex_A.xyz, emissionTex_B.xyz, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float3 emissionTexTwo = tex2Dbias(_EmissionTex2, float4(scaledUV.xy, 0, lodBias)).xyz;
+    float3 emissionTexTwo = UNITY_SAMPLE_TEX2DARRAY(_EmissionTex2, float3(scaledUV.xy, protoId)).xyz;
     //bool viewingSunFacingSide = dot(i.normal.xyz, viewDir.xyz) < 0;
     emissionAnim = viewingOutwardFacingSide ? 0 : saturate((emissionTexTwo.y * 2 + emissionTex.y) * emissionAnim);
 
     float colorControlTex_A = tex2Dbias(_ColorControlTex, float4(uv.xy, 0, lodBias)).x;
     float colorControlTex_B = tex2Dbias(_ColorControlTex, float4(float2(1,1) - uv.yx, 0, lodBias)).x;
     float colorControlTex = lerp(colorControlTex_A, colorControlTex_B, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float colorControlTexTwo = tex2Dbias(_ColorControlTex2, float4(scaledUV.xy, 0, lodBias)).x;
+    float colorControlTexTwo = UNITY_SAMPLE_TEX2DARRAY(_ColorControlTex2, float3(scaledUV.xy, protoId)).x;
     float colorControl = saturate(colorControlTex + colorControlTexTwo);
     
-    float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier);
+    float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier[protoId]);
     float3 emissionOutwardFacing = lerp(emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz, colorOutwardFacing, i.color.w);
     float3 dysonEmission = viewingOutwardFacingSide ? float3(1,1,1) : _DysonEmission.xyz;
     float3 emissionSunFacing = float3(3,3,3) * (emissionTexTwo.x + emissionTex.x) * dysonEmission.xyz;
     float3 emission = viewingOutwardFacingSide ? emissionOutwardFacing.xyz : emissionSunFacing.xyz;
 
-    emission = _EmissionMultiplier * lerp(emission.xyz, dysonEmission.xyz, emissionAnim);
+    emission = _EmissionMultiplier[protoId] * lerp(emission.xyz, dysonEmission.xyz, emissionAnim);
 
     float scaledDistancePosToCamera = 0.5 < asuint(_Global_IsMenuDemo) ? distancePosToCamera : renderPlace > 0.5 ? 3999.9998 * distancePosToCamera : distancePosToCamera;
     float scaleMetallic = 0.5 < asuint(_Global_IsMenuDemo) ? 0.1 : renderPlace > 0.5 ? 0.93 : 0.7;
@@ -443,7 +426,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
                        state > 0.5 ? float3(1.05, 1.05, 1.05)     :
                        shellEmissionColor;
       float emissionFactor = state > 0.5 || cutOut > 0.5 ? 1.0 : colorControl;
-      finalAlpha = _EmissionMultiplier * emissionFactor;
+      finalAlpha = _EmissionMultiplier[protoId] * emissionFactor;
       metallicFactor = saturate(metallic * 0.85 + 0.149);
       float perceptualRoughness = min(1, 1 - smoothness * 0.97);
       roughnessSqr = pow(min(1, 1 - smoothness * 0.97), 4);
@@ -453,7 +436,7 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
       specularStrength = 0.8 * specularStrength;
       fadeOut = 0.03;
       finalColor.xyz = emission.xyz * multiplyEmission;
-      finalAlpha = _EmissionMultiplier * colorControl;
+      finalAlpha = _EmissionMultiplier[protoId] * colorControl;
       metallicFactor = saturate(msTex.x * (0.85 - 0.85 * scaleMetallic) + 0.149);
       roughnessSqr = pow(1 - 0.97 * min(0.8, msTex.y), 4); //pow(min(1, 1 - min(0.8, msTex.y) * 0.97), 2);
     }

@@ -71,9 +71,52 @@ namespace SphereOpt
             _HexMesh.vertices = newVerts;
             _HexMesh.triangles = newTris;
 
-            _HexMat = UnityEngine.Object.Instantiate(
-                Resources.Load<Material>("Dyson Sphere/Materials/dyson-shell-unlit-0"));
+            Material material = Resources.Load<Material>("Dyson Sphere/Materials/dyson-shell-unlit-0");
+            Texture2D cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
+            Texture2D emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
+
+            Texture2DArray colorControlTex2 = new Texture2DArray(cc2.width, cc2.height, 7, cc2.format, true);
+            Texture2DArray emissionTex2 = new Texture2DArray(emm2.width, emm2.height, 7, emm2.format, true);
+            float[] emissionMultiplier = new float[7];
+
+            for (int m = 0; m < cc2.mipmapCount; m++)
+            {
+                Graphics.CopyTexture(cc2, 0, m, colorControlTex2, 0, m);
+            }
+
+            for (int m = 0; m < emm2.mipmapCount; m++)
+            {
+                Graphics.CopyTexture(emm2, 0, m, emissionTex2, 0, m);
+            }
+            // colorControlTex2.SetPixels(cc2.GetPixels(), 0);
+            // emissionTex2.SetPixels(emm2.GetPixels(), 0);
+            emissionMultiplier[0] = material.GetFloat("_EmissionMultiplier");
+
+            for (int i = 1; i < 7; i++) {
+                material = Resources.Load<Material>($"Dyson Sphere/Materials/dyson-shell-unlit-{i}");
+                cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
+                emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
+
+                for (int m = 0; m < cc2.mipmapCount; m++)
+                {
+                    Graphics.CopyTexture(cc2, 0, m, colorControlTex2, i, m);
+                }
+
+                for (int m = 0; m < emm2.mipmapCount; m++)
+                {
+                    Graphics.CopyTexture(emm2, 0, m, emissionTex2, i, m);
+                }
+                // colorControlTex2.SetPixels(cc2.GetPixels(), i);
+                // emissionTex2.SetPixels(emm2.GetPixels(), i);
+                emissionMultiplier[i] = material.GetFloat("_EmissionMultiplier");
+            }
+
+            _HexMat = UnityEngine.Object.Instantiate(material);
             CustomShaderManager.ApplyCustomShaderToMaterial(_HexMat, "dysonshell-inst");
+
+            _HexMat.SetTexture("_ColorControlTex2", colorControlTex2);
+            _HexMat.SetTexture("_EmissionTex2", emissionTex2);
+            _HexMat.SetFloatArray("_EmissionMultiplier", emissionMultiplier);
         }
 
         public void Free()
