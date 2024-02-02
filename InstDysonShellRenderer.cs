@@ -88,8 +88,7 @@ namespace SphereOpt
             {
                 Graphics.CopyTexture(emm2, 0, m, emissionTex2, 0, m);
             }
-            // colorControlTex2.SetPixels(cc2.GetPixels(), 0);
-            // emissionTex2.SetPixels(emm2.GetPixels(), 0);
+
             emissionMultiplier[0] = material.GetFloat("_EmissionMultiplier");
 
             for (int i = 1; i < 7; i++) {
@@ -106,8 +105,7 @@ namespace SphereOpt
                 {
                     Graphics.CopyTexture(emm2, 0, m, emissionTex2, i, m);
                 }
-                // colorControlTex2.SetPixels(cc2.GetPixels(), i);
-                // emissionTex2.SetPixels(emm2.GetPixels(), i);
+
                 emissionMultiplier[i] = material.GetFloat("_EmissionMultiplier");
             }
 
