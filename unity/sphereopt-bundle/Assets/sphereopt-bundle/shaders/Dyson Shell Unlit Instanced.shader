@@ -22,7 +22,6 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
         FailFront Keep
         ZFailFront Keep
       }
-      GpuProgramID 41389
       CGPROGRAM
       #pragma vertex vert
       #pragma fragment frag
@@ -95,12 +94,11 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced" {
       sampler2D _MSTex;
       sampler2D _EmissionTex;
       UNITY_DECLARE_TEX2DARRAY(_EmissionTex2);
-      //sampler2DArray _EmissionTex2;
       sampler2D _ColorControlTex;
       UNITY_DECLARE_TEX2DARRAY(_ColorControlTex2);
-      //sampler2DArray _ColorControlTex2;
 
       #include "UnityCG.cginc"
+      #include "CGIncludes/DSPCommon.cginc"
 
 struct v2f
 {
@@ -223,270 +221,265 @@ v2f vert(appdata_part v, uint instanceID : SV_InstanceID)
 
     uint renderPlace = asuint(_Global_DS_RenderPlace);
 
-    UNITY_BRANCH
-    if (renderPlace > 1.5) {
-      if((asint(_Global_DS_PaintingLayerId) != asint(_LayerId) || asuint(_Global_DS_PaintingGridMode) > 0.5) && asuint(_Global_DS_PaintingLayerId) > 0) discard;
-      bool isFarSide = dot(_WorldSpaceCameraPos.xyz - i.worldPos.xyz, _Global_DS_SunPosition_Map.xyz - i.worldPos.xyz) > 0;
-      bool hideFarSideEnabled = asuint(_Global_DS_HideFarSide) > 0.5;
-      if (hideFarSideEnabled && isFarSide) discard;
-    }
+    if ((asint(_Global_DS_PaintingLayerId) != asint(_LayerId) || asuint(_Global_DS_PaintingGridMode) > 0.5) && (asuint(_Global_DS_PaintingLayerId) > 0 && renderPlace > 1.5))
+        discard;
+
+    if (renderPlace > 1.5 && _Global_DS_HideFarSide > 0.5 && dot(_WorldSpaceCameraPos.xyz - i.worldPos.xyz, _Global_DS_SunPosition_Map.xyz - i.worldPos.xyz) > 0.0))
+        discard;
 
     //uint polyCount = i.polyGroup_pctComplete_polyCount_state.z;
     float state = i.state_clock_protoid.x;
     int protoId = i.state_clock_protoid.z + 0.5;
 
     /* remove pixels that fall outside the bounds of the frame that surrounds this shell */
-    int polyCount = (int)(i.pidx_close_pct_cnt.w + 0.5); //clamp(i.polyCount, 1, 380);
+    uint polyCount = i.pidx_close_pct_cnt.w + 0.5;
+    polyCount = polyCount < 1 ? 1 : min(380, polyCount;
 
-    int closestPolygon = (int)(i.pidx_close_pct_cnt.y + 0.5);
-    int polygonBaseIndex = (int)(i.pidx_close_pct_cnt.x + 0.5);
-    int polyVertIndex = polygonBaseIndex + closestPolygon;
+    int closestPolygon = i.pidx_close_pct_cnt.y + 0.5;
+    int polygonBaseIndex = i.pidx_close_pct_cnt.x + 0.5;
+    int thisIndex = polygonBaseIndex + closestPolygon;
 
     int prevIndexOffset = closestPolygon == 0 ? polyCount - 1 : closestPolygon - 1;
     int nextIndexOffset = fmod(closestPolygon + 1, polyCount); 
     int nextnextIndexOffset = fmod(closestPolygon + 2, polyCount);
 
-    int prevIndex = polygonBaseIndex + prevIndexOffset;
-    int nextIndex = polygonBaseIndex + nextIndexOffset;
-    int nextnextIndex = polygonBaseIndex + nextnextIndexOffset;
+    int prevIndex = (int)thisIndex - 1; //r2.x
+  int nextIndex = (int)thisIndex + 1; //r2.y
+  int nextnextIndex = (int)thisIndex + 2; //r2.z
 
-    int clockwise = 1;//sign(i.state_clock_protoid.y);
+  float3 thisEdge = _PolygonBuffer[nextIndex].pos - _PolygonBuffer[thisIndex].pos;
+  float angleThisEdge = dot(thisEdge, _PolygonBuffer[prevIndex].normal); //r0.w
 
-    //TODO: discard pixels
-    float3 prevLineNormal = _PolygonBuffer[prevIndex].normal;
-    float3 thisLineDir = _PolygonBuffer[nextIndex].pos - _PolygonBuffer[polyVertIndex].pos;
-    //float prevLineIsConvex = sign(dot(thisLineDir, prevLineNormal));
-    float3 prevLineToPoint = i.objectPos.xyz - _PolygonBuffer[prevIndex].pos;
-    //float prevLineInside = sign(dot(prevLineToPoint, prevLineNormal));
+  float3 prevToPoint = i.objectPos.xyz - _PolygonBuffer[prevIndex].pos;
+  float sideOfPrevEdge = dot(prevToPoint, _PolygonBuffer[prevIndex].normal); //r1.w
 
-    float3 thisLineNormal = _PolygonBuffer[polyVertIndex].normal;
-    float3 nextLineDir = _PolygonBuffer[nextnextIndex].pos - _PolygonBuffer[nextIndex].pos;
-    //float nextLineIsConvex = sign(dot(nextLineDir, thisLineNormal));
-    float3 nextLineToPoint = i.objectPos.xyz - _PolygonBuffer[nextIndex].pos;
-    //float thisLineInside = sign(dot(nextLineToPoint, thisLineNormal));
+  float3 nextToPoint = i.objectPos.xyz - _PolygonBuffer[nextIndex].pos;
+  float sideOfThisEdge = dot(nextToPoint, _PolygonBuffer[thisIndex].normal); //r2.x
 
-    float3 nextLineNormal = _PolygonBuffer[nextIndex].normal;
-    float3 nextnextLineToPoint = i.objectPos.xyz - _PolygonBuffer[nextnextIndex].pos;
-    //float nextLineInside = sign(dot(nextnextLineToPoint, nextLineNormal));
+  float3 nextEdge = _PolygonBuffer[nextnextIndex].pos - _PolygonBuffer[nextIndex].pos;
+  float angleNextEdge = dot(nextEdge, _PolygonBuffer[thisIndex].normal); //r0.z
 
-    //float insideBounds = isInside(nextLineIsConvex, prevLineIsConvex, nextLineInside, thisLineInside, prevLineInside);
+  float3 nextnextToPoint = i.objectPos.xyz - _PolygonBuffer[nextnextIndex].pos;
+  float sideOfNextEdge = dot(nextnextToPoint, _PolygonBuffer[nextIndex].normal); //r2.y
 
-    float prevLineIsConcave = dot(thisLineDir, prevLineNormal);
-    float nextLineIsConcave = dot(nextLineDir, thisLineNormal);
-    // <0 means convex
-    // >0 means concave
-    // 0 means parallel
-    int prevLineIsConvex = prevLineIsConcave > 0 ? 1 : prevLineIsConcave < 0 ? -1 : 0;
-    int nextLineIsConvex = nextLineIsConcave > 0 ? 1 : nextLineIsConcave < 0 ? -1 : 0;
-    //set to int, flip sign. 1=convex, -1=concave
+  int acuteObtuseNextEdge = (int)(angleNextEdge < 0) - (int)(angleNextEdge > 0); //r0.z
+  int acuteObtuseThisEdge = (int)(angleThisEdge < 0) - (int)(angleThisEdge > 0); //r0.w
 
-    float prevLineInside = dot(prevLineToPoint, prevLineNormal);
-    float thisLineInside = dot(nextLineToPoint, thisLineNormal);
-    float nextLineInside = dot(nextnextLineToPoint, nextLineNormal);
-    // inside if >0, outside if <0
+  acuteObtuseNextEdge = _Clockwise * acuteObtuseNextEdge;
+  acuteObtuseThisEdge = _Clockwise * acuteObtuseThisEdge;
+  sideOfPrevEdge = _Clockwise * sideOfPrevEdge; //r1.w
+  sideOfThisEdge = _Clockwise * sideOfThisEdge; //r2.x
+  sideOfNextEdge = _Clockwise * sideOfNextEdge; //r2.y
 
-    // flip sign if counterclockwise (_Clockwise = -1)
+  bool IsAcuteObtuseThis = acuteObtuseThisEdge > 0.0; //r2.z
+  bool IsAcuteObtuseNext = acuteObtuseNextEdge > 0.0; //r2.w
 
-    prevLineIsConvex *= clockwise;
-    nextLineIsConvex *= clockwise;
-    prevLineInside *= clockwise;
-    thisLineInside *= clockwise;
-    nextLineInside *= clockwise;
+  float clipVal; //r3.x
+  if (IsAcuteObtuseNext && IsAcuteObtuseThis) {
+    bool IsInsideOutsidePrev = sideOfPrevEdge > 0; //r3.x
+    bool IsInsideOutsideThis = sideOfThisEdge > 0; //r3.y
+    bool IsInsideOutsideNext = sideOfNextEdge > 0; //r3.y
+    clipVal = IsInsideOutsideNext && IsInsideOutsideThis && IsInsideOutsidePrev ? 1 : -1;
+  } else {
+    bool IsInsideOutsidePrev = sideOfPrevEdge > 0; //r1.w
+    bool IsInsideOutsideThis = sideOfThisEdge > 0; //r2.x
+    bool IsInsideOutsideNext = sideOfNextEdge > 0; //r2.y
 
-    float insideBounds = -1;
-    if (nextLineIsConvex > 0 && prevLineIsConvex > 0) {
-      if (nextLineInside > 0 && thisLineInside > 0 && prevLineInside > 0) {
-        insideBounds = 1;
-      } else {
-        insideBounds = -1;
-      }
-    } else {
-      if (nextLineIsConvex > 0 && prevLineIsConvex <= 0) {
-        insideBounds = nextLineInside > 0 && (prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
-      } else {
-        if (nextLineIsConvex <= 0 && prevLineIsConvex > 0) {
-          insideBounds = prevLineInside > 0 && (thisLineInside > 0 || nextLineInside > 0) ? 1 : -1;      
-        } else {
-          insideBounds = (nextLineInside > 0 || prevLineInside > 0 || thisLineInside > 0) ? 1 : -1;
-        }
-      }
+    if (IsAcuteObtuseNext && !IsAcuteObtuseThis) {
+        clipVal = (IsInsideOutsidePrev || IsInsideOutsideThis) && IsInsideOutsideNext ? 1 : -1;
     }
-
-    if (insideBounds < 0) discard;
-
-    //if (insideBounds < 0) discard;
-    /* end shell/frame bounds check */
-
-
-    float distancePosToCamera = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
-    
-    float2 axialCoords = i.uv_axialCoords.zw;
-    float4 cubeCoords = _Scale * float4(0.66666666,0.333333333,-0.333333333,0.333333333) * axialCoords.xxyy;
-    cubeCoords.xy = cubeCoords.yx + cubeCoords.wz;
-
-    float gridFalloff = 0.99 - saturate((distancePosToCamera / _GridSize) / 15.0 - 0.2) * 0.03;
-
-    float2 uv = i.uv_axialCoords.xy;
-    float2 adjustPoint = uv.yx * gridFalloff + cubeCoords.xy;
-    adjustPoint.xy = adjustPoint.yx * float2(2,2) - adjustPoint.xy;
-    float adjustPoint_z = -adjustPoint.x - adjustPoint.y;
-    float2 roundedAdjustPoint = round(adjustPoint.xy);
-    float roundedAdjustPoint_z = round(adjustPoint_z);
-    float2 roundedPointDiff = -roundedAdjustPoint.yx - round(adjustPoint_z);
-    adjustPoint.xy = roundedAdjustPoint.xy < adjustPoint.xy ? adjustPoint.xy - roundedAdjustPoint.xy : roundedAdjustPoint.xy - adjustPoint.xy;
-    adjustPoint_z = roundedAdjustPoint_z < adjustPoint_z ? adjustPoint_z - roundedAdjustPoint_z : roundedAdjustPoint_z - adjustPoint_z;
-    adjustPoint.xy = adjustPoint_z < adjustPoint.xy ? adjustPoint.yx < adjustPoint.xy : 0;
-
-    float alternatePointY = adjustPoint.y ? roundedPointDiff.y : roundedAdjustPoint.y;
-    float2 correctedCoords = roundedAdjustPoint.x + roundedAdjustPoint.y + roundedAdjustPoint_z != 0.000000 ? (adjustPoint.xx ? float2(roundedPointDiff.x, roundedAdjustPoint.y) : float2(roundedAdjustPoint.x, alternatePointY)) : roundedAdjustPoint.xy;
-
-    float2 randomSampleCoords = float2(0.001953125,0.001953125) * correctedCoords.xy;
-    float random_num = tex2Dlod(_NoiseTex, float4(randomSampleCoords.xy, 0, 0)).x;
-
-    float cutOut = 0;
-    if (i.pidx_close_pct_cnt.z - random_num * 0.999 < 0.00005) {
-      UNITY_BRANCH
-      if (renderPlace > 1.5) {
-        float2 pixelPos = (_ScreenParams.xy * screenPos.xy); //(i.screenPos.xy / i.screenPos.ww));
-        pixelPos = (int2)pixelPos;
-        cutOut = (((uint)pixelPos.x << 2) & 12) | ((uint)0 & ~12);
-        cutOut = (((uint)pixelPos.y << 0) & 3) | ((uint)cutOut & ~3);
-        if(any((uint)cutOut == uint4(4,6,12,14))) discard;
-        //clip(0.2499 - icb[cutOut].x * 0.0588);
-
-        cutOut = 1;
-      } else {
-        discard;
-      }
-    }
-
-    float2 scaledUV = uv.xy / _Scale;
-    scaledUV.xy = scaledUV.xy + axialCoords.xx / 3.0 + float2(axialCoords.x - axialCoords.y, axialCoords.y) / 3.0;
-
-    float lodBias = min(4, max(0, log(0.0001 * distancePosToCamera)));
-   
-    float3 triPosNew = 1.0 - abs(frac(0.5 * (float3(0.6666666, 0.0, 1.6666666) + scaledUV.xyx)) * 2.0 - 1.0);
-
-    float2 newPosOne;
-    newPosOne.x = ((triPosNew.x + triPosNew.y) / sqrt(2)) / sqrt(3);
-    newPosOne.y =  (triPosNew.y - triPosNew.x) / sqrt(2);
-
-    float2 newPosTwo;
-    newPosTwo.x = ((triPosNew.z + triPosNew.y) / sqrt(2)) / sqrt(3);
-    newPosTwo.y =  (triPosNew.y - triPosNew.z) / sqrt(2);
-
-    float emissionAnim = saturate(30.0 * (0.05 - abs(length(newPosOne.xy) - frac(2.9 * _Time.x)))) * min(1, 5 * (1 - frac(2.9 * _Time.x)))
-         + saturate(30.0 * (0.05 - abs(length(newPosTwo.xy) - frac(_Time.x * 3.7 + 0.5)))) * min(1, 5 * (1 - frac(_Time.x * 3.7 + 0.5)));
-    
-    
-    float3 emissionTex_A = tex2Dbias(_EmissionTex, float4(uv.xy, 0, lodBias)).xyz;
-    float3 emissionTex_B = tex2Dbias(_EmissionTex, float4(float2(1,1) - uv.yx, 0, lodBias)).xyz;
-    float3 emissionTex = lerp(emissionTex_A.xyz, emissionTex_B.xyz, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float3 emissionTexTwo = UNITY_SAMPLE_TEX2DARRAY(_EmissionTex2, float3(scaledUV.xy, protoId)).xyz;
-    //bool viewingSunFacingSide = dot(i.normal.xyz, viewDir.xyz) < 0;
-    emissionAnim = viewingOutwardFacingSide ? 0 : saturate((emissionTexTwo.y * 2 + emissionTex.y) * emissionAnim);
-
-    float colorControlTex_A = tex2Dbias(_ColorControlTex, float4(uv.xy, 0, lodBias)).x;
-    float colorControlTex_B = tex2Dbias(_ColorControlTex, float4(float2(1,1) - uv.yx, 0, lodBias)).x;
-    float colorControlTex = lerp(colorControlTex_A, colorControlTex_B, sin(_Time.y + _Time.y) * 0.5 + 0.5);
-    float colorControlTexTwo = UNITY_SAMPLE_TEX2DARRAY(_ColorControlTex2, float3(scaledUV.xy, protoId)).x;
-    float colorControl = saturate(colorControlTex + colorControlTexTwo);
-    
-    float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 0.01 / _EmissionMultiplier[protoId]);
-    float3 emissionOutwardFacing = lerp(emissionTexTwo.xyz * float3(0.3, 0.3, 0.3) + emissionTex.xyz, colorOutwardFacing, i.color.w);
-    float3 dysonEmission = viewingOutwardFacingSide ? float3(1,1,1) : _DysonEmission.xyz;
-    float3 emissionSunFacing = float3(3,3,3) * (emissionTexTwo.x + emissionTex.x) * dysonEmission.xyz;
-    float3 emission = viewingOutwardFacingSide ? emissionOutwardFacing.xyz : emissionSunFacing.xyz;
-
-    emission = _EmissionMultiplier[protoId] * lerp(emission.xyz, dysonEmission.xyz, emissionAnim);
-
-    float scaledDistancePosToCamera = 0.5 < asuint(_Global_IsMenuDemo) ? distancePosToCamera : renderPlace > 0.5 ? 3999.9998 * distancePosToCamera : distancePosToCamera;
-    float scaleMetallic = 0.5 < asuint(_Global_IsMenuDemo) ? 0.1 : renderPlace > 0.5 ? 0.93 : 0.7;
-    scaleMetallic = saturate(pow(0.25 * log(scaledDistancePosToCamera + 1) - 1.5, 3.0)) * scaleMetallic;
-
-    float4 albedoTex = tex2Dbias(_MainTex, float4(uv.xy, 0, lodBias)).xyzw;
-    float3 albedo = _AlbedoMultiplier * albedoTex.xyz * lerp(float3(1,1,1), albedoTex.xyz, saturate(1.25 * (albedoTex.w - 0.1)));
-    float specularStrength = dot(albedo, float3(0.3, 0.6, 0.1));
-    float2 msTex = tex2D(_MSTex, uv.xy).xw;
-    
-    float metallicFactor, fadeOut, roughnessSqr, finalAlpha;
-    float3 finalColor;
-    if(renderPlace > 1.5) {
-      float3 shellColor = i.color.w > 0.5 ? i.color.xyz : (asint(_Global_DS_PaintingLayerId) == asint(_LayerId) ? float3(0, 0.3, 0.65) : float3(0, 0.8, 0.6));
-      float3 shellEmissionColor = lerp(emission.xyz * 2.2, shellColor, 0.8 * cutOut);
-      specularStrength       = state > 0.5 ? 0   : 0.8 * specularStrength * (1.0 - cutOut);
-      fadeOut                = state > 0.5 ? 0   : 0.03                   * (1.0 - cutOut);
-      float metallic         = state > 0.5 ? 0   : msTex.x                * (1.0 - scaleMetallic);
-      float smoothness       = state > 0.5 ? 0.5 : min(0.8, msTex.y);
-
-      finalColor.xyz = i.color.w > 0.5 ? i.color.xyz * (viewingOutwardFacingSide ? 1.5 : 2) :
-                       state > 3.5 ? float3(2.59, 0.0525, 0.0875) :
-                       state > 2.5 ? float3(0.525,0.875, 3.5)     :
-                       state > 1.5 ? float3(0.35, 0.7, 3.5)       :
-                       state > 0.5 ? float3(1.05, 1.05, 1.05)     :
-                       shellEmissionColor;
-      float emissionFactor = state > 0.5 || cutOut > 0.5 ? 1.0 : colorControl;
-      finalAlpha = _EmissionMultiplier[protoId] * emissionFactor;
-      metallicFactor = saturate(metallic * 0.85 + 0.149);
-      float perceptualRoughness = min(1, 1 - smoothness * 0.97);
-      roughnessSqr = pow(min(1, 1 - smoothness * 0.97), 4);
+    else if (!IsAcuteObtuseNext && IsAcuteObtuseThis) {
+        clipVal = IsInsideOutsidePrev && (IsInsideOutsideThis || IsInsideOutsideNext) ? 1 : -1;
     }
     else {
-      float multiplyEmission = renderPlace > 0.5 ? 1.8  : 2.5;
-      specularStrength = 0.8 * specularStrength;
-      fadeOut = 0.03;
-      finalColor.xyz = emission.xyz * multiplyEmission;
-      finalAlpha = _EmissionMultiplier[protoId] * colorControl;
-      metallicFactor = saturate(msTex.x * (0.85 - 0.85 * scaleMetallic) + 0.149);
-      roughnessSqr = pow(1 - 0.97 * min(0.8, msTex.y), 4); //pow(min(1, 1 - min(0.8, msTex.y) * 0.97), 2);
+        clipVal = IsInsideOutsideNext || IsInsideOutsidePrev || IsInsideOutsideThis ? 1 : -1;
+    }
+  }
+
+  if (clipVal < 0)
+    discard;
+
+
+    float distToCam = length(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
+    
+    float2 uv = i.uv_axialCoords.xy;
+      float2 axialCoords = i.uv_axialCoords.zw;
+
+      float4 cubeCoords;
+      cubeCoords.xy = _Scale * float2(2.0/3.0, 1.0/3.0) * axialCoords.xx;
+      cubeCoords.zw = _Scale * float2(-1.0/3.0, 1.0/3.0) * axialCoords.yy;
+      cubeCoords.xy = cubeCoords.yx + cubeCoords.wz;
+
+      float gridFalloff = 0.99 - saturate((distToCam / _GridSize) / 15.0 - 0.2) * 0.03;
+
+      float2 adjustPoint = cubeCoords.yx * float2(2.0, 2.0) - uv.yx * gridFalloff - cubeCoords.xy; //r4.xy
+      float2 roundedAdjustPoint = round(adjustPoint.xy); //r5.zw
+
+      float adjustPointZ = -adjustPoint.x - adjustPoint.y; //r0.w
+      float roundedAdjustPointZ = round(adjustPointZ); //r1.w
+
+      float2 correctedCoords = roundedAdjustPoint;;
+      if (roundedAdjustPoint.x + roundedAdjustPoint.y + roundedAdjustPointZ == 0.0) {
+          adjustPoint.xy = roundedAdjustPoint.xy < adjustPoint.xy ? adjustPoint.xy - roundedAdjustPoint.xy : roundedAdjustPoint.xy - adjustPoint.xy;
+          adjustPointZ = roundedAdjustPointZ < adjustPointZ ? adjustPointZ - roundedAdjustPointZ : roundedAdjustPointZ - adjustPointZ;
+
+          float adjustPointY = adjustPointZ < adjustPoint.y && adjustPoint.x < adjustPoint.y ? -roundedAdjustPoint.x - roundedAdjustPointZ : roundedAdjustPoint.y;
+          correctedCoords.x  = adjustPointZ < adjustPoint.x && adjustPoint.y < adjustPoint.x ? -roundedAdjustPoint.y - roundedAdjustPointZ : roundedAdjustPoint.x;
+          correctedCoords.y  = adjustPointZ < adjustPoint.x && adjustPoint.y < adjustPoint.x ?  roundedAdjustPoint.y : adjustPointY;
+      }
+
+      float2 randomSampleCoords = correctedCoords.xy / 512.0;
+      float random_num = tex2Dlod(_NoiseTex, float4(randomSampleCoords.xy, 0, 0)).x;
+
+    float isPlanned = 0;
+    if ((i.pidx_close_pct_cnt.z - random_num * 0.999 < 0.00005) {
+        UNITY_BRANCH
+        if (renderPlace > 1.5) {
+            uint2 pixelPos = screenPos.xy;
+            int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
+            if (mask != 0)
+                discard;
+
+            isPlanned = 1;
+        } else {
+          discard;
+        }
     }
 
-    float4 normalTex = tex2Dbias(_NormalTex, float4(uv.xy, 0, lodBias)).xyzw;
-    float3 unpackedNormal = UnpackNormal(normalTex);
-    unpackedNormal.xy = (-1.5 * _NormalMultiplier) * unpackedNormal.xy;
-    float3 worldNormal = normalize(i.normal.xyz * unpackedNormal.z + i.tangent.xyz * unpackedNormal.x + i.binormal.xyz * unpackedNormal.y);
+    float lodBias = min(4, max(0, log(0.0001 * distToCam))); //r1.w
 
-    float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz);
-    float NdotV = viewingOutwardFacingSide ? dot(worldNormal.xyz, viewDir.xyz) : -dot(worldNormal.xyz, viewDir.xyz);
-    worldNormal.xyz = viewingOutwardFacingSide ? worldNormal.xyz : -worldNormal.xyz;
+      float4 innerTex = tex2Dbias(_MainTex, float4(uv.xy, 0, lodBias)).xyzw; //r6.xyzw
 
-    float3 lightDir = -i.normal.xyz;
-    float3 halfDir = normalize(viewDir + lightDir.xyz);
+      float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(uv.xy, 0, lodBias)));
 
-    float NdotL = dot(worldNormal.xyz, lightDir.xyz);
-    float NdotH = dot(worldNormal.xyz, halfDir.xyz);
-    float VdotH = dot(viewDir, halfDir.xyz);
-    float clamp_NdotL = max(0, NdotL);
-    float clamp_NdotH = max(0, NdotH);
-    float clamp_VdotH = max(0, VdotH);
+      float2 msTex = tex2D(_MSTex, uv.xy).xw; //MS //r7.xy
+      float metallic = msTex.x;
+      float smoothness = msTex.y;
 
-    float D = 0.25 * pow(rcp(clamp_NdotH * clamp_NdotH * (roughnessSqr - 1) + 1),2) * roughnessSqr;
+      float3 emissionTex_A = tex2Dbias(_EmissionTex, float4(uv.xy, 0, lodBias)).xyz; //r8.xyz
+      float2 invUV = float2(1.0, 1.0) - uv.yx;
+      float3 emissionTex_B = tex2Dbias(_EmissionTex, float4(invUV.xy, 0, lodBias)).xyz; //r9.xyz
+      float emissAnim = sin(2.0 * _Time.y) * 0.5 + 0.5; //r4.w
+      float3 emiss = lerp(emissionTex_A, emissionTex_B, emissAnim); //r8.xyz
+      float3 emissStyled = UNITY_SAMPLE_TEX2DARRAY(_EmissionTex2, float3(scaledUV.xy, protoId)).xyz; //emission2 //r9.xyz
 
-    float gv = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, NdotV);
-    float gl = lerp(pow(roughnessSqr + 1, 2) * 0.125, 1.0, clamp_NdotL);
-    float G = rcp(gv * gl);
+      float colorControlTex_A = tex2Dbias(_ColorControlTex, float4(uv.xy, 0, lodBias)).x;
+      float colorControlTex_B = tex2Dbias(_ColorControlTex, float4(invUV.xy, 0, lodBias)).x;
+      float colorControl = lerp(colorControlTex_A, colorControlTex_B, emissAnim); //r4.w
+      float colorControlStyled = UNITY_SAMPLE_TEX2DARRAY(_ColorControlTex2, float3(scaledUV.xy, protoId)).x; //r1.w
+      colorControl = saturate(colorControl + colorControlStyled); //r1.w
 
-    float fk = exp2((clamp_VdotH * -5.55472994 - 6.98316002) * clamp_VdotH);
-    float F = lerp(0.5 + metallicFactor, 1.0, fk);
+      float3 worldNormal = i.tangent.xyz * unpackedNormal.x * -0.5
+                         + i.binormal.xyz * unpackedNormal.y * -0.5
+                         + i.normal.xyz * unpackedNormal.z;
+      float3 worldNormal = normalize(worldNormal.xyz); //r10.xyz
+      worldNormal = viewingOutwardFacingSide ? worldNormal : -worldNormal; //r10.xyz
 
-    float sunStrength = renderPlace < 0.5 ? pow(saturate(1.05 + dot(normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz), i.normal.xyz)), 0.4) : 1.0;
-    float3 sunColor = float3(1.5625,1.5625,1.5625) * _SunColor.xyz;
-    float intensity = saturate(pow(NdotL * 0.6 + 1, 3));
-    float3 sunColorIntensity = float3(0.07, 0.07, 0.07) * _SunColor * (intensity * 1.5 + 1) * intensity;
-    float3 sunSpecular = sunColor.xyz * clamp_NdotL * specularStrength;
+      float3 innerEmissionColor = viewingOutwardFacingSide ? float3(1, 1, 1) : _DysonEmission.xyz; //r11.xyz
 
-    float3 finalLight = lerp(1, specularStrength, metallicFactor) * fadeOut * sunColor.xyz * (F * D * G + (0.1 / UNITY_PI)) * clamp_NdotL;
-    finalLight = finalLight.xyz * lerp(metallicFactor, 1, specularStrength * 0.2);
+    float2 scaledUV = uv.xy / _Scale;
+  scaledUV.xy = scaledUV.xy + axialCoords.xx / 3.0 + float2(axialCoords.x - axialCoords.y, axialCoords.y) / 3.0
 
-    finalLight = float3(5,5,5) * lerp(float3(1,1,1), _SunColor, float3(0.3,0.3,0.3)) * finalLight.xyz;
-    finalLight = (sunColorIntensity.xyz * specularStrength * (1 - metallicFactor * 0.6) + sunSpecular.xyz * pow(1 - metallicFactor, 0.6) + finalLight.xyz) * sunStrength;
+  float3 triPosNew = 1.0 - abs(frac(0.5 * (float3(0.6666666, 0.0, 1.6666666) + scaledUV.xyx)) * 2.0 - 1.0);
 
-    float luminance = dot(finalLight, float3(0.3, 0.6, 0.1));
-    float3 normalizedLight = finalLight / luminance;
-    float megaLog = log(log(log(log(log(log(log(log(luminance / 0.32) + 1) + 1) + 1) + 1) + 1) + 1) + 1) + 1;
-    finalLight = 0.32 < luminance ? normalizedLight * megaLog * 0.32 : finalLight;
+  float2 newPosOne;
+  newPosOne.x = ((triPosNew.x + triPosNew.y) / sqrt(2)) / sqrt(3);
+  newPosOne.y =  (triPosNew.y - triPosNew.x) / sqrt(2);
 
-    o.sv_target.xyzw = float4(finalColor,0) + float4(finalLight, finalAlpha);
+  float2 newPosTwo;
+  newPosTwo.x = ((triPosNew.z + triPosNew.y) / sqrt(2)) / sqrt(3);
+  newPosTwo.y =  (triPosNew.y - triPosNew.z) / sqrt(2);
+
+  float innerEmissionAnim = saturate(30.0 * (0.05 - abs(length(newPosOne.xy) - frac(2.9 * _Time.x)))) * min(1, 5 * (1 - frac(2.9 * _Time.x)))
+       + saturate(30.0 * (0.05 - abs(length(newPosTwo.xy) - frac(_Time.x * 3.7 + 0.5)))) * min(1, 5 * (1 - frac(_Time.x * 3.7 + 0.5)));
+  float innerEmissionAnim = saturate(innerEmissionAnim * (2.0 * emissStyled.y + emiss.y));
+  innerEmissionAnim = viewingOutwardFacingSide ? 0.0 : innerEmissionAnim; //r2.w
+
+  float3 emissionOutwardFacing = emissStyled * float3(0.3, 0.3, 0.3) + emiss; //r8.yzw
+  float3 colorOutwardFacing = lerp(colorControl * i.color.xyz, i.color.xyz, 1.0 / (100.0 * _EmissionMultiplier)); //r9.yzw
+  emissionOutwardFacing = lerp(emissionOutwardFacing, colorOutwardFacing, i.color.www);
+
+  float3 emissionInwardFacing = (emissStyled.x + emiss.x) * innerEmissionColor * float3(3.0, 3.0, 3.0)
+  float3 emission = viewingOutwardFacingSide ? emissionOutwardFacing : emissionInwardFacing; //r3.yzw
+
+  emission = lerp(emission, innerEmissionColor, innerEmissionAnim); //r3.yzw
+
+  float innerTex_Luminance = dot(pow(innerTex.xyz, 2.0), float3(0.3, 0.6, 0.1)); //r2.w
+
+  distToCam = asuint(isMenuDemo) > 0.5 ? distToCam : (renderPlace > 0.5 ? 3999.9998 * distToCam : distToCam);
+  float scaleMetallic = asuint(isMenuDemo) > 0.5 ? 0.1 : (renderPlace > 0.5 ? 0.93 : 0.7);
+  float distanceScale = saturate(pow(0.25 * log(1.0 + distToCam) - 1.5, 3.0));
+  float scaleMetallic = scaleMetallic * (1.0 - distanceScale);
+
+  float3 plannedShellColor = asint(_Global_DS_PaintingLayerId) == asint(_LayerId) ? float3(0.0, 0.3, 0.65) : float3(0.0, 0.8, 0.6); //r6.yzw
+  plannedShellColor = i.color.w > 0.5 ? i.color.xyz : plannedShellColor; //r6.yzw
+  float emissionBrightness = renderPlace > 1.5 ? 2.2 : (renderPlace > 0.5 ? 1.8 : 2.5); //r0.y
+  emission = lerp(_EmissionMultiplier * emission * emissionBrightness, plannedShellColor, 0.8 * isPlanned); //r3.yzw
+
+  innerTex_Luminance = state > 0.5 ? 0.0 : 0.8 * innerTex_Luminance * (1.0 - isPlanned); //r0.x
+  float specularStrength = state > 0.5 ? 0.0 : 0.03 * (1.0 - isPlanned); //r2.z
+  metallic = state > 0.5 ? 0.0 : metallic * scaleMetallic; //r2.x
+  smoothness = state > 0.5 ? 0.5 : min(0.8, smoothness); //r2.y
+
+  float colorMultiplier = viewingOutwardFacingSide ? 1.5 : 2.0;
+  float3 dysonEditorColor = renderPlace < 1.5 ? float3(0, 0, 0) : i.color.xyz * colorMultiplier; //r5.xzw
+
+  float3 deleteColor = i.color.w > 0.5 ? dysonEditorColor : float3(2.59, 0.0525, 0.0875); //r6.yzw
+  float3 hoverSelectColor = i.color.w > 0.5 ? dysonEditorColor : float3(0.525, 0.875, 3.5); //r8.xyz
+  float3 selectColor = i.color.w > 0.5 ? dysonEditorColor : float3(0.35, 0.7, 3.5); //r9.xyz
+  float3 hoverColor = i.color.w > 0.5 ? dysonEditorColor : float3(1.05, 1.05, 1.05); //r5.xzw
+
+  emission = state > 0.5 ? hoverColor : emission;
+  emission = state > 1.5 ? selectColor : emission;
+  emission = state > 2.5 ? hoverSelectColor : emission; //r3.yzw
+  emission = state > 3.5 ? deleteColor : emission; //r6.xyz
+
+  colorControl = state > 0.5 || isPlanned > 0.5 ? 1.0 / _EmissionMultiplier : colorControl;
+
+  metallic = saturate(metallic * 0.85 + 0.149); //r0.w
+
+  float perceptualRoughness = min(1.0, 1.0 - smoothness * 0.97); //r1.w
+
+  float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz); //r4.xyz
+  float3 lightDir = -i.normal.xyz;
+  float3 halfDir = normalize(viewDir + lightDir); //r1.xyz
+
+  float roughness = perceptualRoughness * perceptualRoughness; //r0.z
+
+  float3 sunToCamDir = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz); //r2.xyw
+  float innerSunReflectFalloff = pow(saturate(1.05 + dot(sunToCamDir, i.normal.xyz)), 0.4); //r2.x
+  innerSunReflectFalloff = renderPlace < 0.5 ? innerSunReflectFalloff : 1.0; //r2.x
+
+  float unclamped_NdotL = dot(worldNormal.xyz, lightDir); //r2.y
+  float NdotL = max(0.0, unclamped_NdotL); //r2.w
+  float NdotH = max(0.0, dot(worldNormal, halfDir)); //r4.w
+  float NdotV = dot(worldNormal.xyz, viewDir.xyz); //r3.z
+  NdotV = viewingOutwardFacingSide  ? NdotV : -NdotV; //r3.z
+  float VdotH = max(0.0, dot(viewDir, halfDir); //r1.x
+
+  float specularTerm = GGX(roughness, metallic + 0.5, NdotH, NdotV, NdotL, VdotH);
+
+  float lightFalloff = saturate(pow(unclamped_NdotL * 0.6 + 1.0, 3.0));
+  float3 diffuseLight = lightFalloff * (lightFalloff * 1.5 + 1.0) * float3(0.07, 0.07, 0.07) * _SunColor.xyz;
+
+  float3 specularLight = (metallic * (metallic - 1.0) + 1.0) * specularStrength * (float3(1.5625,1.5625,1.5625) * _SunColor.xyz);
+  specularLight = specularLight * (specularTerm + INV_TEN_PI) * NdotL * ((1.0 - metallic) * innerTex_Luminance * 0.2 + metallic);
+
+  float3 finalLight = diffuseLight * innerTex_Luminance * (1.0 - metallic * 0.6)
+        + pow(1.0 - metallic, 0.6) * float3(1.5625,1.5625,1.5625) * _SunColor.xyz * NdotL * innerTex_Luminance
+        + float3(5,5,5) * lerp(float3(1,1,1), _SunColor.xyz, float3(0.3, 0.3, 0.3)) * specularLight;
+  finalLight = finalLight * innerSunReflectFalloff;
+
+  float luminance = dot(finalLight, float3(0.3,0.6, 0.1));
+  if (luminance > 0.32) {
+      float megaLog = log(log(log(log(log(log(log(log(luminance / 0.32) + 1) + 1) + 1) + 1) + 1) + 1) + 1) + 1;
+      finalLight = (finalLight / luminance) * (0.32 * megaLog)
+  }
+
+  float finalAlpha = _EmissionMultiplier * colorControl;
+
+  o.sv_target.xyz = emission + finalLight;
+  o.sv_target.w = finalAlpha;
 
     return o;
   }
