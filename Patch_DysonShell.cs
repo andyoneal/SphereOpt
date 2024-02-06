@@ -1,4 +1,6 @@
-﻿using HarmonyLib;
+﻿using System.Collections.Generic;
+using System.Reflection.Emit;
+using HarmonyLib;
 
 namespace SphereOpt
 {
@@ -31,7 +33,7 @@ namespace SphereOpt
                     shellIndex = shellIndex,
                     nodeIndex = (int)__instance.uvs[i].x,
                     vertFillOrder = __instance.uvs[i].y,
-                    closestPolygon = __instance.clockwise ? (int)__instance.uv2s[i].y : polygon.Count - (int)__instance.uv2s[i].y - 1,
+                    closestPolygon = (int)__instance.uv2s[i].y,
                     axialCoords_xy =
                         (uint)(((__instance.vkeys[i] >> 16) - 10000) & 0x0000ffff | ((__instance.vkeys[i] & 0xFFFF) - 10000) << 16)
                 };
@@ -51,7 +53,8 @@ namespace SphereOpt
                 polygonIndex = polygonIndex,
                 polyCount = polygon.Count,
                 center = __instance.center,
-                protoId = __instance.protoId
+                protoId = __instance.protoId,
+                clockwise = __instance.clockwise ? 1 : -1
             };
             instShellLayer.AddShellData(shellIndex, shellData);
             instShellLayer.shellBufferIsDirty = true;
@@ -116,6 +119,37 @@ namespace SphereOpt
         {
             var instDysonShellRenderer = SphereOpt.getInstDysonShellRendererForSphere(__instance.dysonSphere);
             instDysonShellRenderer?.RemoveLayer(__instance.id);
+        }
+
+        [HarmonyPatch(typeof(UIDEToolbox), "OnColorChange")]
+        [HarmonyPostfix]
+        private static void UIDEToolbox_OnColorChange(UIDEToolbox __instance)
+        {
+            foreach (DysonShell selectedShell in __instance.editor.selection.selectedShells)
+            {
+                SphereOpt.UpdateColor(selectedShell);
+            }
+        }
+        
+        [HarmonyTranspiler]
+        [HarmonyPatch(typeof(UIDysonBrush_Paint), "_OnUpdate")]
+        static IEnumerable<CodeInstruction> UIDysonBrush_Paint__OnUpdate(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        {
+            CodeMatcher matcher = new CodeMatcher(instructions, generator);
+            
+            matcher.MatchForward(true,
+                new CodeMatch(OpCodes.Stfld, AccessTools.Field(typeof(DysonShell), nameof(DysonShell.color)))
+            ).Advance(-12);
+
+            var shellVarOpCode = matcher.Opcode;
+            var shellVarOperand = matcher.Operand;
+
+            matcher.Advance(13).InsertAndAdvance(
+                new CodeInstruction(shellVarOpCode, shellVarOperand),
+                new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SphereOpt), nameof(SphereOpt.UpdateColor)))
+            );
+
+            return matcher.InstructionEnumeration();
         }
     }
 }

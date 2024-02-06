@@ -303,7 +303,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
           
           float3 specularColor = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedo.xyz, metallic);
           specularColor = specularColor.xyz * sunColor;
-          float INV_TEN_PI = 0.0318309888;
           specularColor.xyz = specularColor.xyz * clamped_nDotL * (specularTerm + INV_TEN_PI);
           
           float3 specColorMod = 0.2 * albedo.xyz * (1.0 - metallic) + metallic;
