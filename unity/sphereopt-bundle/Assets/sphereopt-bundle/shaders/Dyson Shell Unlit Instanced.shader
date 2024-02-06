@@ -388,6 +388,8 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
                                    + i.binormal.xyz * unpackedNormal.y * -0.5
                                    + i.normal.xyz * unpackedNormal.z;
                 worldNormal = normalize(worldNormal.xyz); //r10.xyz
+                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz); //r4.xyz
+                float NdotV = dot(worldNormal.xyz, viewDir.xyz); //r3.z
                 worldNormal = viewingOutwardFacingSide ? worldNormal : -worldNormal; //r10.xyz
                 
                 float3 innerEmissionColor = viewingOutwardFacingSide ? float3(1, 1, 1) : _DysonEmission.xyz; //r11.xyz
@@ -452,7 +454,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
 
                 float perceptualRoughness = min(1.0, 1.0 - smoothness * 0.97); //r1.w
 
-                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - i.worldPos.xyz); //r4.xyz
+                
                 float3 lightDir = -i.normal.xyz;
                 float3 halfDir = normalize(viewDir + lightDir); //r1.xyz
 
@@ -465,7 +467,7 @@ Shader "VF Shaders/Dyson Sphere/Dyson Shell Unlit Instanced"
                 float unclamped_NdotL = dot(worldNormal.xyz, lightDir); //r2.y
                 float NdotL = max(0.0, unclamped_NdotL); //r2.w
                 float NdotH = max(0.0, dot(worldNormal, halfDir)); //r4.w
-                float NdotV = dot(worldNormal.xyz, viewDir.xyz); //r3.z
+                
                 NdotV = viewingOutwardFacingSide  ? NdotV : -NdotV; //r3.z
                 float VdotH = max(0.0, dot(viewDir, halfDir)); //r1.x
 
