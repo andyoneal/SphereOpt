@@ -80,5 +80,12 @@ namespace SphereOpt
         {
             instRenderers.Remove(ds.starData.id);
         }
+
+        public static void UpdateColor(DysonShell shell)
+        {
+            var dsRenderer = getInstDysonShellRendererForSphere(shell.dysonSphere);
+            var layer = dsRenderer.getInstShellLayer(shell.layerId);
+            layer.UpdateColor(shell.id, shell.color);
+        }
     }
 }

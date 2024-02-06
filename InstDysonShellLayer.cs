@@ -38,8 +38,9 @@ namespace SphereOpt
             public int polygonIndex;
             public Vector3 center;
             public int protoId;
+            public int clockwise;
         }
-        public static int SHELLDATA_STRIDE = 36;
+        public static int SHELLDATA_STRIDE = 40;
 
         public int layerId;
 
@@ -151,17 +152,6 @@ namespace SphereOpt
             { 
                 polygonPool[polygonCursor + i].pos = polygon[i];
                 polygonPool[polygonCursor + i].normal = polyn[i];
-            }
-
-            if (!clockwise)
-            {
-                Array.Reverse(polygonPool, polygonCursor, polygon.Count);
-                for (int i = 0; i < polygon.Count; i++)
-                {
-                    Vector3 vector = polygonPool[polygonCursor + i].pos;
-                    Vector3 vector2 = polygonPool[polygonCursor + (i + 1) % polygon.Count].pos;
-                    polygonPool[polygonCursor + i].normal = VectorLF3.Cross(vector, vector2).normalized;
-                }
             }
 
             polygonBufferIsDirty = true;
@@ -295,6 +285,12 @@ namespace SphereOpt
         public void UpdateState(int shellId, uint shellState)
         {
             shellPool[shellId].state = shellState;
+            shellBufferIsDirty = true;
+        }
+
+        public void UpdateColor(int shellId, Color32 shellColor)
+        {
+            shellPool[shellId].color = (shellColor.a << 24) | (shellColor.b << 16) | (shellColor.g << 8) | shellColor.r;
             shellBufferIsDirty = true;
         }
     }
