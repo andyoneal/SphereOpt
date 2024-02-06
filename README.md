@@ -1,6 +1,6 @@
 # SphereOpt
 
-**SphereOpt v0.9.0 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
+**SphereOpt v0.9.1 should be considered a "beta" release. The worst you should is experience is errors or graphical glitches, in which case you can uninstall the mod. Please report any issues you encounter.**
 
 Improves rendering of Dyson Shells, Frames, and Nodes by instancing the shell hexagons and issuing one draw call per layer, instead of one per shell. Also implements culling and level of detail for frames/nodes. Impact is larger depending on the size of your Dyson Sphere(s).
 
@@ -9,10 +9,14 @@ In a new game with a large and densely packed sphere containing 5,240 shells, fr
 [DSPOptimizations](https://dsp.thunderstore.io/package/Selsion/DSPOptimizations/) is not required, but I don't know why you wouldn't use it if you're interested in this mod.
 
 ## Known Limitations
-- does not support painting/colors on shells. this was just an additional layer of complexity that I haven't dug into yet. planning to have this in before 1.0.
+- does not support the "painting grid", but regular colors work.
 - some dyson spheres have random gaps but most are fine. it is frustrating.
 
 ## Changelog
+- v0.9.1
+  - supports colors on shells, frames, and nodes. Does not yet support the "painting grid".
+  - fixed some of the gaps in shells. still some left, but a lot less.
+  - unfortunately made it slightly slower (85fps->80fps for me), but will be corrected in a later update.
 - v0.9.0
   - supports DSP 0.10.29.28154
   - added support for shell textures other than the default, without adding extra draw calls. thanks, Texture2DArray!
