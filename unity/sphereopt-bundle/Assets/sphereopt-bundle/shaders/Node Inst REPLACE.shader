@@ -71,7 +71,25 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
       sampler2D _MSTex;
       sampler2D _NormalTex;
       sampler2D _EmissionTex;
+      
+      float4x4 BuildTransformFromPosition(float3 pos) {
+          float3 up = normalize(pos);
+        
+          float3 tentativeForward = abs(up.z) < 0.999 ? float3(0, 0, 1) : float3(1, 0, 0);
+          float3 right = cross(up, tentativeForward);
+          right = normalize(right);
+        
+          float3 forward = cross(right, up);
+          forward = normalize(forward);
 
+          float4x4 transformMatrix;
+          transformMatrix[0] = float4(right, 0);
+          transformMatrix[1] = float4(up, 0);
+          transformMatrix[2] = float4(forward, 0);
+          transformMatrix[3] = float4(pos, 1);
+
+          return transpose(transformMatrix);
+      }
 
       v2f vert( appdata_part v, uint instanceID : SV_InstanceID)
       {
@@ -79,95 +97,74 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
 
         uint instIndex = _InstIndexBuffer[instanceID];
         
-        float3 vertPos = 100 * v.vertex.xyz;
-
         uint layer = _InstBuffer[instIndex].layer;
-        unity_ObjectToWorld._m00_m01_m02_m03 = _LayerRotations[layer * 3];
-        unity_ObjectToWorld._m10_m11_m12_m13 = _LayerRotations[layer * 3 + 1];
-        unity_ObjectToWorld._m20_m21_m22_m23 = _LayerRotations[layer * 3 + 2];
-        unity_ObjectToWorld._m30_m31_m32_m33 = float4(0,0,0,1);
         uint state = _InstBuffer[instIndex].state;
         float3 pos0 = _InstBuffer[instIndex].pos0;
         float progress0 = _InstBuffer[instIndex].progress0;
         uint color = _InstBuffer[instIndex].color;
-
-        o.lightray_layer.w = layer;
-        o.u_v_radius_state.w = state;
-
-        float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
-        o.color.xyzw = pow((float4(0.055, 0.055, 0.055, 0.055) + gamma_color) / float4(1.05, 1.05, 1.05, 1.05), 2.4);
-
+        
+        unity_ObjectToWorld._m00_m01_m02_m03 = _LayerRotations[layer * 3];
+        unity_ObjectToWorld._m10_m11_m12_m13 = _LayerRotations[layer * 3 + 1];
+        unity_ObjectToWorld._m20_m21_m22_m23 = _LayerRotations[layer * 3 + 2];
+        unity_ObjectToWorld._m30_m31_m32_m33 = float4(0,0,0,1);
+        
         uint renderPlace = asuint(_Global_DS_RenderPlace);
         float progress1 = renderPlace > 1.5 ? 1 : progress0;
+        float3 vertPos = 100 * v.vertex.xyz;
         vertPos.xz = progress1 < 0.999 ? (progress1 * 0.5 + 0.2) * vertPos.xz : vertPos.xz;
-
-        float3 y_axis = normalize(pos0.xyz);
-        float3 x_axis = normalize(cross(y_axis, float3(0,1,0)));
-        float3 z_axis = cross(x_axis, y_axis);
-        int flipSign = pos0.y < 0 ? 1 : pos0.y > 0 ? -1 : 0;
-        x_axis.xyz = abs(y_axis.x) > 0.001 || abs(y_axis.z) > 0.001 ? x_axis : float3(1,0,0);
-        y_axis.xyz = abs(y_axis.x) > 0.001 || abs(y_axis.z) > 0.001 ? y_axis : float3(0, flipSign, 0);
-        z_axis.xyz = abs(y_axis.x) > 0.001 || abs(y_axis.z) > 0.001 ? z_axis : float3(0, 0, flipSign);
-        pos0.xz = abs(y_axis.x) > 0.001 || abs(y_axis.z) > 0.001 ? pos0.xz : 0;
-
-        vertPos.xyz = vertPos.zzz * z_axis.xyz + vertPos.xxx * x_axis.xyz + vertPos.yyy * y_axis.xyz;
-
-        float3 transformPos = vertPos + pos0.xyz;
-
-        float3 transformNormal;
-        transformNormal.xyz = v.normal.yyy * y_axis.xyz;
-        transformNormal.xyz = v.normal.xxx * x_axis.xyz + transformNormal.xyz;
-        transformNormal.xyz = v.normal.zzz * z_axis.xyz + transformNormal.xyz;
-
-        float3 transformTangent;
-        transformTangent.xyz = v.tangent.yyy * y_axis.xyz;
-        transformTangent.xyz = v.tangent.xxx * x_axis.xyz + transformTangent.xyz;
-        transformTangent.xyz = v.tangent.zzz * z_axis.xyz + transformTangent.xyz;
-
-        float3 worldPos = mul(unity_ObjectToWorld, float4(transformPos.xyz, 1));
-        float3 worldNormal = mul((float3x3)unity_ObjectToWorld, transformNormal.xyz);
-        float3 worldTangent = mul((float3x3)unity_ObjectToWorld, transformTangent.xyz);
-
-        float invFrameRadius = rsqrt(dot(pos0.xyz, pos0.xyz));
-
-        float falloffDistance = pow(1 + min(4, max(0, (5000 * invFrameRadius) - 0.2)), 2);
-
-        float3 lightPos_Normal = normalize(worldPos.xyz - _Global_DS_SunPosition.xyz) * falloffDistance;
-        float3 lightPos_DysonMap = normalize(worldPos.xyz - _Global_DS_SunPosition_Map.xyz) * falloffDistance;
-
-        o.lightray_layer.xyz = renderPlace < 1.5 ? lightPos_Normal.xyz : lightPos_DysonMap.xyz;
-
-        float3 rayViewToUPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
-        float distViewToUpos = length(rayViewToUPos.xyz);
-        rayViewToUPos.xyz = distViewToUpos > 10000 ? rayViewToUPos.xyz * (10000 * log(0.0001 * distViewToUpos) + 10000) / distViewToUpos : rayViewToUPos.xyz;
-        float3 uPos = _WorldSpaceCameraPos.xyz + rayViewToUPos.xyz;
-
-        float4 clipPos = UnityWorldToClipPos(uPos.xyz);
-
+        
+        float4x4 transformMatrix = BuildTransformFromPosition(pos0.xyz);
+        transformMatrix = mul(unity_ObjectToWorld, transformMatrix);
+        
+        float3 worldPos = mul(transformMatrix, float4(vertPos, 1));
+        float3 worldNormal = mul((float3x3)transformMatrix, v.normal.xyz);
         worldNormal = normalize(worldNormal.xyz);
+        float3 worldTangent = mul((float3x3)transformMatrix, v.tangent.xyz);
         worldTangent = normalize(worldTangent.xyz);
         float3 worldBinormal = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal);
         
+        float invFrameRadius = rsqrt(dot(pos0.xyz, pos0.xyz));
+        float falloffDistance = pow(1 + min(4, max(0, (5000 * invFrameRadius) - 0.2)), 2);
+        float3 lightRay_Normal = normalize(worldPos.xyz - _Global_DS_SunPosition.xyz) * falloffDistance;
+        float3 lightRay_DysonMap = normalize(worldPos.xyz - _Global_DS_SunPosition_Map.xyz) * falloffDistance;
+        float3 lightray = renderPlace < 1.5 ? lightRay_Normal.xyz : lightRay_DysonMap.xyz;
 
+        float3 rayCamToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
+        float distFromCam = length(rayCamToPos.xyz);
+        rayCamToPos = distFromCam > 10000 ? rayCamToPos * (10000 * log(0.0001 * distFromCam) + 10000) / distFromCam : rayCamToPos;
+        worldPos = _WorldSpaceCameraPos.xyz + rayCamToPos;
+
+        float4 clipPos = UnityWorldToClipPos(worldPos.xyz);
+        
+        float4 gamma_color = ((asuint(color) >> int4(0,8,16,24)) & int4(255,255,255,255)) / 255.0;
+        float4 linear_color = pow((float4(0.055, 0.055, 0.055, 0.055) + gamma_color) / float4(1.05, 1.05, 1.05, 1.05), 2.4);
+        
         o.position.xyzw = clipPos.xyzw;
 
         o.tbnw_matrix_x.x = worldTangent.x;
         o.tbnw_matrix_x.y = worldBinormal.x;
         o.tbnw_matrix_x.z = worldNormal.x;
-        o.tbnw_matrix_x.w = uPos.x;
+        o.tbnw_matrix_x.w = worldPos.x;
         o.tbnw_matrix_y.x = worldTangent.y;
         o.tbnw_matrix_y.y = worldBinormal.y;
         o.tbnw_matrix_y.z = worldNormal.y;
-        o.tbnw_matrix_y.w = uPos.y;
+        o.tbnw_matrix_y.w = worldPos.y;
         o.tbnw_matrix_z.x = worldTangent.z;
         o.tbnw_matrix_z.y = worldBinormal.z;
         o.tbnw_matrix_z.z = worldNormal.z;
-        o.tbnw_matrix_z.w = uPos.z;
+        o.tbnw_matrix_z.w = worldPos.z;
 
         o.u_v_radius_state.xy = v.texcoord.xy;
         o.u_v_radius_state.z = 1;
+        o.u_v_radius_state.w = state;
+
+        o.lightray_layer.xyz = lightray;
+        o.lightray_layer.w = layer;
 
         o.progress.xy = float2(progress0, progress1);
+        
+        o.color.xyzw = linear_color;
+        
         return o;
       }
 
