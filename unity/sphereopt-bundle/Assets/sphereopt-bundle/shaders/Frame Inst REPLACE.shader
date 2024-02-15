@@ -211,8 +211,8 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
             
 //          uint color = _InstBuffer[instIndex].color;
           float3 gamma_color = ((color >> int3(0,8,16)) & int3(255,255,255)) / 255.0;
-          float4 painted_color = float3(GammaToLinearSpace(gamma_color.xyz), 0);
-          painted_color.w = gamma_color.x + gamma_color.y + gamma_color.z > 0.01 : 1.0 : 0.0;
+          float4 painted_color = float4(GammaToLinearSpace(gamma_color.xyz), 0);
+          painted_color.w = gamma_color.x + gamma_color.y + gamma_color.z > 0.01 ? 1.0 : 0.0;
           
           float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
           float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
