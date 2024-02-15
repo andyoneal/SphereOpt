@@ -1,24 +1,33 @@
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityMeshSimplifier;
 
 namespace SphereOpt
 {
     public static class InstDysonNodeFrameRenderer
     {
-        public static bool instBufferChangedSize;
-        private static ComputeBuffer[][] lodBatchBuffers;
-        private static Mesh[][] lodMeshes;
+        private static NodeBatch[] nodeBatches;
+        private static FrameBatch[] frameBatches;
+
         private static readonly Vector4[] layerRotations = new Vector4[11 * 3];
+
         private static ComputeShader frameLODShader;
-        private static int csKernelId;
-        private static uint csThreads;
-        private static ComputeBuffer argBuffer;
+        private static int frameCSKernelId;
+        private static uint frameCSThreads;
+
+        private static ComputeShader nodeLODShader;
+        private static int nodeCSKernelId;
+        private static uint nodeCSThreads;
+
+        private static ComputeBuffer nodeArgBuffer;
+        private static ComputeBuffer frameArgBuffer;
 
         private static StarData starData;
         private static GameData gameData;
         private static DysonSphere dysonSphere;
         private static DysonSphereSegmentRenderer currentDSSR;
+
+        private static int nodeProtoCount => DysonSphereSegmentRenderer.nodeProtoCount;
+        private static int frameProtoCount => DysonSphereSegmentRenderer.frameProtoCount;
 
         private static readonly int InstBuffer = Shader.PropertyToID("_InstBuffer");
         private static readonly int LayerRotations = Shader.PropertyToID("_LayerRotations");
@@ -35,126 +44,190 @@ namespace SphereOpt
         private static readonly int LOD1IDBuffer = Shader.PropertyToID("_LOD1_ID_Buffer");
         private static readonly int LOD2IDBuffer = Shader.PropertyToID("_LOD2_ID_Buffer");
 
-        public static void SetupMeshes()
+        public static void SetupBatches()
         {
-            if (lodMeshes != null) return;
+            if (nodeBatches != null || frameBatches != null)
+                return;
 
-            lodMeshes = new Mesh[DysonSphereSegmentRenderer.totalProtoCount][];
-            var meshSimplifier = new MeshSimplifier();
-            for (int i = 0; i < DysonSphereSegmentRenderer.totalProtoCount; i++)
+            nodeBatches = new NodeBatch[nodeProtoCount];
+            var nodeArgArr = new uint[5 * nodeProtoCount * 3];
+
+            for (int i = 0; i < nodeProtoCount; i++)
             {
-                lodMeshes[i] = new Mesh[3];
-                lodMeshes[i][0] = DysonSphereSegmentRenderer.protoMeshes[i];
-                meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
-                var options = SimplificationOptions.Default;
-                if (i == 0)
-                {
-                    options.PreserveBorderEdges = true;
-                    options.PreserveUVFoldoverEdges = false;
-                    options.PreserveUVSeamEdges = true;
-                }
-                else
-                {
-                    options.PreserveBorderEdges = true;
-                    options.PreserveUVFoldoverEdges = true;
-                    options.PreserveUVSeamEdges = false;  
-                }
-                options.MaxIterationCount = 1000;
-                meshSimplifier.SimplificationOptions = options;
-                meshSimplifier.SimplifyMesh(0.7f);
-                lodMeshes[i][1] = meshSimplifier.ToMesh();
-                meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
-                meshSimplifier.SimplificationOptions = options;
-                meshSimplifier.SimplifyMesh(0.2f);
-                lodMeshes[i][2] = meshSimplifier.ToMesh();
-            }
-        }
+                var batch = new NodeBatch();
+                batch.lodBatchBuffers = new ComputeBuffer[3];
+                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4);
 
-        public static void SetupBuffers()
-        {
-            if (lodBatchBuffers != null) return;
+                batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[i]);
+                batch.SetupMat(DysonSphereSegmentRenderer.protoMats[i]);
 
-            var totalProtoCount = DysonSphereSegmentRenderer.totalProtoCount;
+                nodeBatches[i] = batch;
 
-            lodBatchBuffers = new ComputeBuffer[totalProtoCount][];
-            for (int i = 0; i < totalProtoCount; i++)
-            {
-                lodBatchBuffers[i] = new ComputeBuffer[3];
-                lodBatchBuffers[i][0] = new ComputeBuffer(128, 4);
-                lodBatchBuffers[i][1] = new ComputeBuffer(128, 4);
-                lodBatchBuffers[i][2] = new ComputeBuffer(128, 4);
-            }
-
-            var argArr = new uint[5 * totalProtoCount * 3];
-            for (int i = 0; i < totalProtoCount; i++)
-            {
                 for (int j = 0; j < 3; j++)
                 {
-                    if (DysonSphereSegmentRenderer.protoMeshes[i] != null &&
-                        DysonSphereSegmentRenderer.protoMats[i] != null)
-                    {
-                        argArr[i * 15 + j * 5] = lodMeshes[i][j].GetIndexCount(0);
-                        argArr[i * 15 + j * 5 + 1] = 0u;
-                        argArr[i * 15 + j * 5 + 2] = lodMeshes[i][j].GetIndexStart(0);
-                        argArr[i * 15 + j * 5 + 3] = lodMeshes[i][j].GetBaseVertex(0);
-                        argArr[i * 15 + j * 5 + 4] = 0u;
-                    }
+                    nodeArgArr[i * 15 + j * 5] = nodeBatches[i].lodMeshes[j].GetIndexCount(0);
+                    nodeArgArr[i * 15 + j * 5 + 1] = 0u;
+                    nodeArgArr[i * 15 + j * 5 + 2] = nodeBatches[i].lodMeshes[j].GetIndexStart(0);
+                    nodeArgArr[i * 15 + j * 5 + 3] = nodeBatches[i].lodMeshes[j].GetBaseVertex(0);
+                    nodeArgArr[i * 15 + j * 5 + 4] = 0u;
                 }
             }
 
-            argBuffer?.Release();
-            argBuffer = new ComputeBuffer(argArr.Length, 4, ComputeBufferType.IndirectArguments);
-            argBuffer.SetData(argArr);
+            nodeArgBuffer?.Release();
+            nodeArgBuffer = new ComputeBuffer(nodeArgArr.Length, 4, ComputeBufferType.IndirectArguments);
+            nodeArgBuffer.SetData(nodeArgArr);
+            
+            frameBatches = new FrameBatch[frameProtoCount];
+            var frameArgArr = new uint[5 * frameProtoCount * 3];
+
+            for (int i = 0; i < frameProtoCount; i++)
+            {
+                var batch = new FrameBatch();
+                batch.lodBatchBuffers = new ComputeBuffer[3];
+                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4);
+
+                batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[nodeProtoCount + i]);
+                batch.SetupMat(DysonSphereSegmentRenderer.protoMats[nodeProtoCount + i]);
+
+                frameBatches[i] = batch;
+
+                for (int j = 0; j < 3; j++)
+                {
+                    frameArgArr[i * 15 + j * 5] = frameBatches[i].lodMeshes[j].GetIndexCount(0);
+                    frameArgArr[i * 15 + j * 5 + 1] = 0u;
+                    frameArgArr[i * 15 + j * 5 + 2] = frameBatches[i].lodMeshes[j].GetIndexStart(0);
+                    frameArgArr[i * 15 + j * 5 + 3] = frameBatches[i].lodMeshes[j].GetBaseVertex(0);
+                    frameArgArr[i * 15 + j * 5 + 4] = 0u;
+                }
+            }
+
+            frameArgBuffer?.Release();
+            frameArgBuffer = new ComputeBuffer(frameArgArr.Length, 4, ComputeBufferType.IndirectArguments);
+            frameArgBuffer.SetData(frameArgArr);
         }
 
         public static void SetupLODShader()
         {
-            if (frameLODShader != null) return;
+            if (frameLODShader != null || nodeLODShader != null)
+                return;
+
+            nodeLODShader = CustomShaderManager.LoadComputeShader("Node LOD");
+            nodeCSKernelId = nodeLODShader.FindKernel("CSMain");
+            nodeLODShader.GetKernelThreadGroupSizes(nodeCSKernelId, out nodeCSThreads, out var _, out var _);
 
             frameLODShader = CustomShaderManager.LoadComputeShader("Frame LOD");
-            csKernelId = frameLODShader.FindKernel("CSMain");
-            frameLODShader.GetKernelThreadGroupSizes(csKernelId, out csThreads, out var _, out var _);
+            frameCSKernelId = frameLODShader.FindKernel("CSMain");
+            frameLODShader.GetKernelThreadGroupSizes(frameCSKernelId, out frameCSThreads, out var _, out var _);
         }
 
-        private static void switchDSSR(DysonSphereSegmentRenderer dssr)
+        private static void SwitchDSSR(DysonSphereSegmentRenderer dssr)
         {
-            instBufferChangedSize = true;
-
             starData = dssr.starData;
             gameData = dssr.gameData;
             dysonSphere = dssr.dysonSphere;
 
             currentDSSR = dssr;
-        }
 
-        private static void rebuildInstBuffers()
-        {
-            for (int b = 0; b < DysonSphereSegmentRenderer.totalProtoCount; b++)
+            RebuildFrameModels();
+
+            for (int i = 0; i < nodeProtoCount; i++)
             {
-                if (currentDSSR.batches[b] == null || currentDSSR.batches[b].cursor <= 0) continue;
-                var bufferCount = currentDSSR.batches[b].buffer.count;
-                if (lodBatchBuffers[b][0] == null || bufferCount != lodBatchBuffers[b][0].count)
-                {
-                    for (int i = 0; i < 3; i++)
-                    {
-                        lodBatchBuffers[b][i]?.Release();
-                        lodBatchBuffers[b][i] = new ComputeBuffer(bufferCount, 4, ComputeBufferType.Append);
-                    }
-                }
+                nodeBatches[i].protoMat.SetColor(SunColor, dysonSphere.sunColor);
+                nodeBatches[i].protoMat.SetColor(DysonEmission, dysonSphere.emissionColor);
+                nodeBatches[i].SetBatchBufferDirty();
+            }
+
+            for (int i = 0; i < frameProtoCount; i++)
+            {
+                frameBatches[i].protoMat.SetColor(SunColor, dysonSphere.sunColor);
+                frameBatches[i].protoMat.SetColor(DysonEmission, dysonSphere.emissionColor);
+                frameBatches[i].SetBatchBufferDirty();
             }
         }
+
+        public static void RebuildFrameModels()
+	    {
+		    for (int i = 0; i < frameProtoCount; i++)
+		    {
+			    frameBatches[i]?.ClearSegments();
+		    }
+
+		    for (uint layer = 1u; layer <= 10; layer++)
+		    {
+			    DysonSphereLayer dysonSphereLayer = dysonSphere.layersIdBased[layer];
+			    if (dysonSphereLayer == null)
+                    continue;
+
+                for (int j = 1; j < dysonSphereLayer.nodeCursor; j++)
+                {
+                    DysonNode dysonNode = dysonSphereLayer.nodePool[j];
+                    if (dysonNode == null || dysonNode.id != j)
+                        continue;
+
+                    NodeSegment seg = default(NodeSegment);
+                    seg.layer = layer;
+                    seg.pos0 = seg.pos1 = dysonNode.pos;
+                    seg.progress0 = seg.progress1 = dysonNode.sp / (float)dysonNode.spMax;
+                    seg.color = dysonNode.color;
+
+                    uint protoId = (uint)dysonNode.protoId;
+                    if (nodeBatches[protoId] != null)
+                    {
+                        nodeBatches[protoId].AddNode(seg);
+                        //dysonNode.modelIdx = segId + 1;
+                    }
+                }
+
+			    for (int k = 1; k < dysonSphereLayer.frameCursor; k++)
+			    {
+				    DysonFrame dysonFrame = dysonSphereLayer.framePool[k];
+				    if (dysonFrame == null || dysonFrame.id != k)
+                        continue;
+
+				    Vector3 fromNodePos = dysonFrame.nodeA.pos;
+				    Vector3 toNodePos = dysonFrame.nodeB.pos;
+				    int segCount = dysonFrame.segCount;
+
+				    Vector3 currentNodePos = fromNodePos;
+				    for (int l = 0; l < segCount; l++)
+				    {
+					    float t = (l + 1f) / segCount;
+
+                        FrameSegment seg = default(FrameSegment);
+					    seg.layer = layer;
+                        bool progress = Mathf.Clamp01(dysonFrame.spA / 10f - l) +
+                            Mathf.Clamp01(dysonFrame.spB / 10f - (segCount - l - 1)) > 0.01;
+                        seg.progress = progress;
+                        seg.color = dysonFrame.color;
+					    seg.pos0 = currentNodePos;
+                        seg.pos1 = dysonFrame.euler ? Maths.Elerp(fromNodePos, toNodePos, t) : Vector3.Slerp(fromNodePos, toNodePos, t);
+
+                        uint protoId = (uint)(dysonFrame.protoId - nodeProtoCount);
+                        if (frameBatches[protoId] != null)
+                        {
+                            frameBatches[protoId].AddSegment(seg);
+                        }
+
+                        currentNodePos = seg.pos1;
+				    }
+			    }
+		    }
+
+		    for (int m = 0; m < frameProtoCount; m++)
+		    {
+			    frameBatches[m]?.SetBatchBufferDirty();
+		    }
+	    }
 
         public static void Render(DysonSphereSegmentRenderer dssr, ERenderPlace place, int editorMask, int gameMask)
         {
-            if (currentDSSR == null || currentDSSR != dssr) switchDSSR(dssr);
+            if (currentDSSR == null || currentDSSR != dssr) SwitchDSSR(dssr);
 
-            if (instBufferChangedSize)
-            {
-                rebuildInstBuffers();
-                instBufferChangedSize = false;
-            }
-
-            var localRot = new Quaternion(0f, 0f, 0f, 1f);
+            var localRot = Quaternion.identity;
             var sunPos = Vector3.zero;
             var sunPosMap = Vector3.zero;
             if (starData != null && gameData != null)
@@ -176,6 +249,9 @@ namespace SphereOpt
                         localPlanet.runtimeRotation.z, 0f - localPlanet.runtimeRotation.w);
                 }
             }
+
+            Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
+            Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
 
             bool shouldRender = true;
             var layer = 16;
@@ -199,8 +275,6 @@ namespace SphereOpt
                 default:
                     break;
             }
-            Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
-            Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
 
             var pos = place == ERenderPlace.Universe ? sunPos : sunPosMap;
             var scale = place == ERenderPlace.Starmap || place == ERenderPlace.Dysonmap
@@ -217,48 +291,80 @@ namespace SphereOpt
                 layerRotations[l * 3 + 2] = transformMatrix.GetRow(2);
             }
 
-            var batches = dssr.batches;
-            var instMats = dssr.instMats;
+            Matrix4x4 v = cam.worldToCameraMatrix;
+            Matrix4x4 p = cam.projectionMatrix;
+
+            nodeLODShader.SetVectorArray(LayerRotations, layerRotations);
+            nodeLODShader.SetVector(CamPosition, cam.transform.position);
+            nodeLODShader.SetFloat(Scale, scale.x);
+            nodeLODShader.SetMatrix(UnityMatrixVp, p * v);
+            nodeLODShader.SetFloat(FOV, cam.fieldOfView);
+
+            var mpb = new MaterialPropertyBlock();
+            mpb.SetVectorArray(LayerRotations, layerRotations);
+
+            for (int b = 0; b < nodeProtoCount; b++)
+            {
+                var nodeBatch = nodeBatches[b];
+                if (nodeBatch == null || nodeBatch.cursor <= 0)
+                    continue;
+
+                nodeBatch.SyncBufferData();
+
+                nodeLODShader.SetBuffer(nodeCSKernelId, InstBuffer, nodeBatch.buffer);
+                nodeLODShader.SetBuffer(nodeCSKernelId, LOD0IDBuffer, nodeBatch.lodBatchBuffers[0]);
+                nodeLODShader.SetBuffer(nodeCSKernelId, LOD1IDBuffer, nodeBatch.lodBatchBuffers[1]);
+                nodeLODShader.SetBuffer(nodeCSKernelId, LOD2IDBuffer, nodeBatch.lodBatchBuffers[2]);
+
+                nodeBatch.ResetCounters();
+                nodeLODShader.Dispatch(nodeCSKernelId, Mathf.Max(1, Mathf.CeilToInt(nodeBatch.cursor / (float)nodeCSThreads)), 1, 1);
+
+                for (int i = 0; i < 3; i++)
+                {
+                    ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[i], nodeArgBuffer, (b * 15 + i * 5 + 1) * 4);
+
+                    if (shouldRender)
+                    {
+                        mpb.SetBuffer(InstIndexBuffer, nodeBatch.lodBatchBuffers[i]);
+                        Graphics.DrawMeshInstancedIndirect(nodeBatch.lodMeshes[i], 0, nodeBatch.protoMat,
+                            new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), nodeArgBuffer,
+                            (b * 15 + i * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
+                    }
+                }
+            }
+
             frameLODShader.SetVectorArray(LayerRotations, layerRotations);
             frameLODShader.SetVector(CamPosition, cam.transform.position);
             frameLODShader.SetFloat(Scale, scale.x);
-            Matrix4x4 v = cam.worldToCameraMatrix;
-            Matrix4x4 p = cam.projectionMatrix;
             frameLODShader.SetMatrix(UnityMatrixVp, p * v);
-            float fov = cam.fieldOfView;
-            frameLODShader.SetFloat(FOV, fov);
-            var mpb = new MaterialPropertyBlock();
-            mpb.SetVectorArray(LayerRotations, layerRotations);
-            for (var b = 0; b < DysonSphereSegmentRenderer.totalProtoCount; b++)
-            {
-                if (batches[b] == null || batches[b].cursor <= 0) continue;
-                batches[b].SyncBufferData();
-                frameLODShader.SetBuffer(csKernelId, InstBuffer, batches[b].buffer);
-                frameLODShader.SetBuffer(csKernelId, LOD0IDBuffer, lodBatchBuffers[b][0]);
-                frameLODShader.SetBuffer(csKernelId, LOD1IDBuffer, lodBatchBuffers[b][1]);
-                frameLODShader.SetBuffer(csKernelId, LOD2IDBuffer, lodBatchBuffers[b][2]);
-                for (int i = 0; i < 3; i++)
-                {
-                    lodBatchBuffers[b][i].SetCounterValue(0u);
-                }
+            frameLODShader.SetFloat(FOV, cam.fieldOfView);
 
-                frameLODShader.Dispatch(csKernelId,
-                    Mathf.Max(1, Mathf.CeilToInt(batches[b].cursor / (float)csThreads)), 1, 1);
+            for (int b = 0; b < frameProtoCount; b++)
+            {
+                var frameBatch = frameBatches[b];
+                if (frameBatch == null || frameBatch.cursor <= 0)
+                    continue;
+
+                frameBatch.SyncBufferData();
+
+                frameLODShader.SetBuffer(frameCSKernelId, InstBuffer, frameBatch.buffer);
+                frameLODShader.SetBuffer(frameCSKernelId, LOD0IDBuffer, frameBatch.lodBatchBuffers[0]);
+                frameLODShader.SetBuffer(frameCSKernelId, LOD1IDBuffer, frameBatch.lodBatchBuffers[1]);
+                frameLODShader.SetBuffer(frameCSKernelId, LOD2IDBuffer, frameBatch.lodBatchBuffers[2]);
+
+                frameBatch.ResetCounters();
+                frameLODShader.Dispatch(frameCSKernelId, Mathf.Max(1, Mathf.CeilToInt(frameBatch.cursor / (float)frameCSThreads)), 1, 1);
+
                 for (int i = 0; i < 3; i++)
                 {
-                    ComputeBuffer.CopyCount(lodBatchBuffers[b][i], argBuffer, (b * 15 + i * 5 + 1) * 4);
-                }
-                instMats[b].SetColor(SunColor, dysonSphere.sunColor);
-                instMats[b].SetColor(DysonEmission, dysonSphere.emissionColor);
-                mpb.SetBuffer(InstBuffer, batches[b].buffer);
-                for (int j = 0; j < 3; j++)
-                {
-                    mpb.SetBuffer(InstIndexBuffer, lodBatchBuffers[b][j]);
+                    ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[i], frameArgBuffer, (b * 15 + i * 5 + 1) * 4);
+
                     if (shouldRender)
                     {
-                        Graphics.DrawMeshInstancedIndirect(lodMeshes[b][j], 0, instMats[b],
-                            new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), argBuffer,
-                            (b * 15 + j * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
+                        mpb.SetBuffer(InstIndexBuffer, frameBatch.lodBatchBuffers[i]);
+                        Graphics.DrawMeshInstancedIndirect(frameBatch.lodMeshes[i], 0, frameBatch.protoMat,
+                            new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), frameArgBuffer,
+                            (b * 15 + i * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
                     }
                 }
             }

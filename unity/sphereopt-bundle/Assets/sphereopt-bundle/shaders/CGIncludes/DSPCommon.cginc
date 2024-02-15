@@ -35,6 +35,12 @@ float3 GammaToLinear_Approx(float3 c)
     return pow((c + 0.055)/1.055, 2.4);
 }
 
+uint BitFieldExtract(uint data, uint offset, uint numBits)
+{
+  uint mask = (1u << numBits) - 1u;
+  return (data >> offset) & mask;
+}
+
 float SchlickFresnel_Approx(float F0, float vDotH)
 {
     return F0 + (1 - F0) * exp2((-5.55473 * vDotH - 6.98316) * vDotH);

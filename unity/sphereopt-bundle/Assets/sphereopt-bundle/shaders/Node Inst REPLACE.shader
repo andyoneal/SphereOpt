@@ -20,7 +20,7 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
       #pragma target 5.0
       #pragma enable_d3d11_debug_symbols
 
-      struct Segment {
+      struct NodeSegment {
         uint layer;
         uint state;
         float3 pos0;
@@ -54,7 +54,7 @@ Shader "VF Shaders/Dyson Sphere/Node Inst REPLACE" {
         float4 sv_target : SV_Target0;
       };
 
-      StructuredBuffer<Segment> _InstBuffer;
+      StructuredBuffer<NodeSegment> _InstBuffer;
       StructuredBuffer<uint> _InstIndexBuffer;
 
       float4 _SunColor;

@@ -4,35 +4,19 @@ namespace SphereOpt
 {
     public static class Patch_DysonSphereSegmentRenderer
     {
-        /*[HarmonyPatch(typeof(GameCamera), "Logic")]
-        [HarmonyPostfix]
-        private static void GameCamera_Logic(GameCamera __instance)
-        {
-            __instance.finalMenu.fov = 2.6f;
-        }
-
-        [HarmonyPatch(typeof(DSPGame), "StartDemoGame")]
-        [HarmonyPrefix]
-        private static bool DSPGame_StartDemoGame(ref int index)
-        {
-            index = -2;
-            return true;
-        }*/
-
-        [HarmonyPatch(typeof(DysonSphereSegmentRenderer.Batch), "SetCapacity")]
-        [HarmonyPostfix]
-        public static void Batch_SetCapacity(DysonSphereSegmentRenderer.Batch __instance, int newCap)
-        {
-            InstDysonNodeFrameRenderer.instBufferChangedSize = true;
-        }
-
         [HarmonyPatch(typeof(DysonSphereSegmentRenderer), "LoadStatic")]
         [HarmonyPostfix]
         private static void DysonSphereSegmentRenderer_LoadStatic(DysonSphereSegmentRenderer __instance)
         {
-            InstDysonNodeFrameRenderer.SetupMeshes();
-            InstDysonNodeFrameRenderer.SetupBuffers();
+            InstDysonNodeFrameRenderer.SetupBatches();
             InstDysonNodeFrameRenderer.SetupLODShader();
+        }
+
+        [HarmonyPatch(typeof(DysonSphereSegmentRenderer), "RebuildModels")]
+        [HarmonyPostfix]
+        private static void DysonSphereSegmentRenderer_RebuildModels(DysonSphereSegmentRenderer __instance)
+        {
+            InstDysonNodeFrameRenderer.RebuildFrameModels();
         }
 
         [HarmonyPatch(typeof(DysonSphereSegmentRenderer), "DrawModels")]

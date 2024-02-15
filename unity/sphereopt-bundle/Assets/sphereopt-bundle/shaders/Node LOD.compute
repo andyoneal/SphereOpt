@@ -13,7 +13,7 @@
 
 #pragma enable_d3d11_debug_symbols
 
-struct Segment {
+struct NodeSegment {
     uint layer;
     uint state;
     float3 pos0;
@@ -29,7 +29,7 @@ float4x4 _UNITY_MATRIX_VP;
 float _FOV;
 float _Scale;
 
-StructuredBuffer<Segment> _InstBuffer;
+StructuredBuffer<NodeSegment> _InstBuffer;
 AppendStructuredBuffer<uint> _LOD0_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD1_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD2_ID_Buffer;

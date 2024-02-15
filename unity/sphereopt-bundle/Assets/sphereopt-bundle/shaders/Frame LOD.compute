@@ -13,15 +13,11 @@
 
 #pragma enable_d3d11_debug_symbols
 
-struct Segment {
-    uint layer;
-    uint state;
+struct FrameSegment {
+    uint layer_state_progress_color; //layer [0-3], state [4-6], progress [7], color [8-31]
     float3 pos0;
     float3 pos1;
-    float progress0;
-    float progress1;
-    int color;
-};
+  };
 
 float3 _CamPosition;
 float4 _LayerRotations[11 * 3];
@@ -29,10 +25,16 @@ float4x4 _UNITY_MATRIX_VP;
 float _FOV;
 float _Scale;
 
-StructuredBuffer<Segment> _InstBuffer;
+StructuredBuffer<FrameSegment> _InstBuffer;
 AppendStructuredBuffer<uint> _LOD0_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD1_ID_Buffer;
 AppendStructuredBuffer<uint> _LOD2_ID_Buffer;
+
+uint BitFieldExtract(uint data, uint offset, uint numBits)
+{
+  uint mask = (1u << numBits) - 1u;
+  return (data >> offset) & mask;
+}
 
 inline uint IsVisibleAfterFrustumCulling(float4 clipPos)
 {
@@ -58,7 +60,8 @@ inline void CSMain (
     )
 {
     uint tID = _dispatchThreadID.x;
-    uint layer = _InstBuffer[tID].layer;
+    uint layer_state_progress_color = _InstBuffer[tID].layer_state_progress_color;
+    uint layer = BitFieldExtract(layer_state_progress_color, 0, 4);
     float4x4 objectToWorld;
     objectToWorld._m00_m01_m02_m03 = _LayerRotations[layer * 3];
     objectToWorld._m10_m11_m12_m13 = _LayerRotations[layer * 3 + 1];
