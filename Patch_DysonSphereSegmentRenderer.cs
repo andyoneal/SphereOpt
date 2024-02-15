@@ -27,5 +27,12 @@ namespace SphereOpt
             SphereOpt.getInstDysonShellRendererForSphere(__instance.dysonSphere).RenderShells(place, editorMask, gameMask);
             return false;
         }
+
+        [HarmonyPatch(typeof(DysonSphereSegmentRenderer), "Init")]
+        [HarmonyPostfix]
+        private static void DysonSphereSegmentRenderer_Init(DysonSphereSegmentRenderer __instance)
+        {
+            InstDysonNodeFrameRenderer.SwitchDSSR(__instance);
+        }
     }
 }

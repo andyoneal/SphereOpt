@@ -12,6 +12,7 @@ namespace SphereOpt
         public uint layer_state_progress_color;
         public Vector3 pos0;
         public Vector3 pos1;
+        public uint padding;
 
         public uint layer
         {

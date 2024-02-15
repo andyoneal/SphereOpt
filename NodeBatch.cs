@@ -21,6 +21,7 @@ namespace SphereOpt
                 return;
 
             protoMat = UnityEngine.Object.Instantiate(mat);
+            CustomShaderManager.ReplaceShaderIfAvailable(protoMat);
             protoMat.SetBuffer("_InstBuffer", buffer);
         }
 
@@ -78,6 +79,13 @@ namespace SphereOpt
 
             buffer?.Release();
             buffer = new ComputeBuffer(capacity, 44);
+            protoMat.SetBuffer("_InstBuffer", buffer);
+
+            for (int i = 0; i < 3; i++)
+            {
+                lodBatchBuffers[i]?.Release();
+                lodBatchBuffers[i] = new ComputeBuffer(capacity, 4, ComputeBufferType.Append);
+            }
         }
 
         public void AddNode(NodeSegment seg)

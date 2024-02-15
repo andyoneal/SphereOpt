@@ -24,6 +24,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         uint layer_state_progress_color; //layer [0-3], state [4-6], progress [7], color [8-31]
         float3 pos0;
         float3 pos1;
+        uint padding;
       };
 
       struct appdata_part {

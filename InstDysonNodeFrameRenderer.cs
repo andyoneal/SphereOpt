@@ -56,9 +56,9 @@ namespace SphereOpt
             {
                 var batch = new NodeBatch();
                 batch.lodBatchBuffers = new ComputeBuffer[3];
-                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4);
-                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4);
-                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
+                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
+                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
 
                 batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[i]);
                 batch.SetupMat(DysonSphereSegmentRenderer.protoMats[i]);
@@ -86,9 +86,9 @@ namespace SphereOpt
             {
                 var batch = new FrameBatch();
                 batch.lodBatchBuffers = new ComputeBuffer[3];
-                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4);
-                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4);
-                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4);
+                batch.lodBatchBuffers[0] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
+                batch.lodBatchBuffers[1] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
+                batch.lodBatchBuffers[2] = new ComputeBuffer(128, 4, ComputeBufferType.Append);
 
                 batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[nodeProtoCount + i]);
                 batch.SetupMat(DysonSphereSegmentRenderer.protoMats[nodeProtoCount + i]);
@@ -124,7 +124,7 @@ namespace SphereOpt
             frameLODShader.GetKernelThreadGroupSizes(frameCSKernelId, out frameCSThreads, out var _, out var _);
         }
 
-        private static void SwitchDSSR(DysonSphereSegmentRenderer dssr)
+        public static void SwitchDSSR(DysonSphereSegmentRenderer dssr)
         {
             starData = dssr.starData;
             gameData = dssr.gameData;
@@ -318,11 +318,13 @@ namespace SphereOpt
 
                 nodeBatch.ResetCounters();
                 nodeLODShader.Dispatch(nodeCSKernelId, Mathf.Max(1, Mathf.CeilToInt(nodeBatch.cursor / (float)nodeCSThreads)), 1, 1);
+                
+                ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[0], nodeArgBuffer, (b * 15 + 0 * 5 + 1) * 4);
+                ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[1], nodeArgBuffer, (b * 15 + 1 * 5 + 1) * 4);
+                ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[2], nodeArgBuffer, (b * 15 + 2 * 5 + 1) * 4);
 
                 for (int i = 0; i < 3; i++)
                 {
-                    ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[i], nodeArgBuffer, (b * 15 + i * 5 + 1) * 4);
-
                     if (shouldRender)
                     {
                         mpb.SetBuffer(InstIndexBuffer, nodeBatch.lodBatchBuffers[i]);
@@ -354,11 +356,13 @@ namespace SphereOpt
 
                 frameBatch.ResetCounters();
                 frameLODShader.Dispatch(frameCSKernelId, Mathf.Max(1, Mathf.CeilToInt(frameBatch.cursor / (float)frameCSThreads)), 1, 1);
+                
+                ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[0], frameArgBuffer, (b * 15 + 0 * 5 + 1) * 4);
+                ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[1], frameArgBuffer, (b * 15 + 1 * 5 + 1) * 4);
+                ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[2], frameArgBuffer, (b * 15 + 2 * 5 + 1) * 4);
 
                 for (int i = 0; i < 3; i++)
                 {
-                    ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[i], frameArgBuffer, (b * 15 + i * 5 + 1) * 4);
-
                     if (shouldRender)
                     {
                         mpb.SetBuffer(InstIndexBuffer, frameBatch.lodBatchBuffers[i]);
