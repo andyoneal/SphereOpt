@@ -83,6 +83,10 @@ namespace SphereOpt
             protoMat = UnityEngine.Object.Instantiate(mat);
             CustomShaderManager.ReplaceShaderIfAvailable(protoMat);
             protoMat.SetBuffer("_InstBuffer", buffer);
+            
+            protoMatLOD2 = UnityEngine.Object.Instantiate(mat);
+            CustomShaderManager.ApplyCustomShaderToMaterial(mat, "instFrameLOD2");
+            protoMatLOD2.SetBuffer("_InstBuffer", buffer);
         }
 
         public void SetupMeshes(Mesh mesh)

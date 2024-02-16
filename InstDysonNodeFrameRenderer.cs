@@ -43,6 +43,8 @@ namespace SphereOpt
         private static readonly int LOD0IDBuffer = Shader.PropertyToID("_LOD0_ID_Buffer");
         private static readonly int LOD1IDBuffer = Shader.PropertyToID("_LOD1_ID_Buffer");
         private static readonly int LOD2IDBuffer = Shader.PropertyToID("_LOD2_ID_Buffer");
+        
+        private static readonly MaterialPropertyBlock mpb = new MaterialPropertyBlock();
 
         public static void SetupBatches()
         {
@@ -62,6 +64,7 @@ namespace SphereOpt
 
                 batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[i]);
                 batch.SetupMat(DysonSphereSegmentRenderer.protoMats[i]);
+                batch.mpb = new MaterialPropertyBlock();
 
                 nodeBatches[i] = batch;
 
@@ -92,6 +95,7 @@ namespace SphereOpt
 
                 batch.SetupMeshes(DysonSphereSegmentRenderer.protoMeshes[nodeProtoCount + i]);
                 batch.SetupMat(DysonSphereSegmentRenderer.protoMats[nodeProtoCount + i]);
+                batch.mpb = new MaterialPropertyBlock();
 
                 frameBatches[i] = batch;
 
@@ -225,30 +229,26 @@ namespace SphereOpt
 
         public static void Render(DysonSphereSegmentRenderer dssr, ERenderPlace place, int editorMask, int gameMask)
         {
+            if (starData == null || gameData == null)
+                return;
+            
             if (currentDSSR == null || currentDSSR != dssr) SwitchDSSR(dssr);
+            
+            var localPlanet = gameData.localPlanet;
+            var mainPlayer = gameData.mainPlayer;
 
-            var localRot = Quaternion.identity;
-            var sunPos = Vector3.zero;
-            var sunPosMap = Vector3.zero;
-            if (starData != null && gameData != null)
-            {
-                var localPlanet = gameData.localPlanet;
-                var mainPlayer = gameData.mainPlayer;
-                sunPos = localPlanet == null
-                    ? (Vector3)(starData.uPosition - mainPlayer.uPosition)
-                    : (Vector3)Maths.QInvRotateLF(localPlanet.runtimeRotation,
-                        starData.uPosition - localPlanet.uPosition);
-                if (place == ERenderPlace.Starmap)
-                {
-                    sunPosMap = (starData.uPosition - UIStarmap.viewTargetStatic) * 0.00025;
-                }
+            Vector3 sunPos = localPlanet == null
+                ? starData.uPosition - mainPlayer.uPosition
+                : Maths.QInvRotateLF(localPlanet.runtimeRotation, starData.uPosition - localPlanet.uPosition);
 
-                if (localPlanet != null && place == ERenderPlace.Universe)
-                {
-                    localRot = new Quaternion(localPlanet.runtimeRotation.x, localPlanet.runtimeRotation.y,
-                        localPlanet.runtimeRotation.z, 0f - localPlanet.runtimeRotation.w);
-                }
-            }
+            Vector3 sunPosMap = place == ERenderPlace.Starmap
+                ? (Vector3)((starData.uPosition - UIStarmap.viewTargetStatic) * 0.00025)
+                : Vector3.zero;
+
+            var localRot = localPlanet != null && place == ERenderPlace.Universe
+                ? new Quaternion(localPlanet.runtimeRotation.x, localPlanet.runtimeRotation.y,
+                    localPlanet.runtimeRotation.z, 0f - localPlanet.runtimeRotation.w)
+                : Quaternion.identity;
 
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
             Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
@@ -299,8 +299,7 @@ namespace SphereOpt
             nodeLODShader.SetFloat(Scale, scale.x);
             nodeLODShader.SetMatrix(UnityMatrixVp, p * v);
             nodeLODShader.SetFloat(FOV, cam.fieldOfView);
-
-            var mpb = new MaterialPropertyBlock();
+            
             mpb.SetVectorArray(LayerRotations, layerRotations);
 
             for (int b = 0; b < nodeProtoCount; b++)
@@ -365,8 +364,9 @@ namespace SphereOpt
                 {
                     if (shouldRender)
                     {
+                        Material mat = i == 2 ? frameBatch.protoMatLOD2 : frameBatch.protoMat;
                         mpb.SetBuffer(InstIndexBuffer, frameBatch.lodBatchBuffers[i]);
-                        Graphics.DrawMeshInstancedIndirect(frameBatch.lodMeshes[i], 0, frameBatch.protoMat,
+                        Graphics.DrawMeshInstancedIndirect(frameBatch.lodMeshes[i], 0, mat,
                             new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), frameArgBuffer,
                             (b * 15 + i * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
                     }
