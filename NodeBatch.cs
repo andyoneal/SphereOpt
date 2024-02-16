@@ -29,21 +29,24 @@ namespace SphereOpt
         {
             if (lodMeshes != null)
                 return;
-            
-            var meshSimplifier = new MeshSimplifier();
-            lodMeshes = new Mesh[3];
-            lodMeshes[0] = mesh;
 
-            meshSimplifier.Initialize(mesh);
+            lodMeshes = new Mesh[3];
+            lodMeshes[0] = UnityEngine.Object.Instantiate(mesh);
+            lodMeshes[1] = UnityEngine.Object.Instantiate(mesh);
+            lodMeshes[2] = UnityEngine.Object.Instantiate(mesh);
+
             var options = SimplificationOptions.Default;
             options.PreserveBorderEdges = true;
-            options.PreserveUVFoldoverEdges = true;
-            options.PreserveUVSeamEdges = false;
+            options.PreserveUVSeamEdges = true;
             options.MaxIterationCount = 1000;
+
+            var meshSimplifier = new MeshSimplifier();
+            meshSimplifier.Initialize(mesh);
             meshSimplifier.SimplificationOptions = options;
             meshSimplifier.SimplifyMesh(0.7f);
             lodMeshes[1] = meshSimplifier.ToMesh();
 
+            meshSimplifier = new MeshSimplifier();
             meshSimplifier.Initialize(mesh);
             meshSimplifier.SimplificationOptions = options;
             meshSimplifier.SimplifyMesh(0.2f);
