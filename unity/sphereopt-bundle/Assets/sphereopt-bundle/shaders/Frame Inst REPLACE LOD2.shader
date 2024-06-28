@@ -1,4 +1,4 @@
-Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
+Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
   Properties {
     _MainTex ("Albedo (RGB)", 2D) = "white" {}
     _NormalTex ("Normal Map", 2D) = "bump" {}

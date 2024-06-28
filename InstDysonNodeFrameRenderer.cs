@@ -81,7 +81,7 @@ namespace SphereOpt
             nodeArgBuffer?.Release();
             nodeArgBuffer = new ComputeBuffer(nodeArgArr.Length, 4, ComputeBufferType.IndirectArguments);
             nodeArgBuffer.SetData(nodeArgArr);
-            
+
             frameBatches = new FrameBatch[frameProtoCount];
             var frameArgArr = new uint[5 * frameProtoCount * 3];
 
@@ -203,18 +203,14 @@ namespace SphereOpt
 
                         FrameSegment seg = default(FrameSegment);
 					    seg.layer = layer;
-                        bool progress = Mathf.Clamp01(dysonFrame.spA / 10f - l) +
-                            Mathf.Clamp01(dysonFrame.spB / 10f - (segCount - l - 1)) > 0.01;
+                        bool progress = Mathf.Clamp01(dysonFrame.spA / 10f - l) + Mathf.Clamp01(dysonFrame.spB / 10f - (segCount - l - 1)) > 0.01;
                         seg.progress = progress;
                         seg.color = dysonFrame.color;
 					    seg.pos0 = currentNodePos;
                         seg.pos1 = dysonFrame.euler ? Maths.Elerp(fromNodePos, toNodePos, t) : Vector3.Slerp(fromNodePos, toNodePos, t);
 
                         uint protoId = (uint)(dysonFrame.protoId - nodeProtoCount);
-                        if (frameBatches[protoId] != null)
-                        {
-                            frameBatches[protoId].AddSegment(seg);
-                        }
+                        frameBatches[protoId]?.AddSegment(seg);
 
                         currentNodePos = seg.pos1;
 				    }
@@ -231,9 +227,9 @@ namespace SphereOpt
         {
             if (starData == null || gameData == null)
                 return;
-            
+
             if (currentDSSR == null || currentDSSR != dssr) SwitchDSSR(dssr);
-            
+
             var localPlanet = gameData.localPlanet;
             var mainPlayer = gameData.mainPlayer;
 
@@ -299,7 +295,7 @@ namespace SphereOpt
             nodeLODShader.SetFloat(Scale, scale.x);
             nodeLODShader.SetMatrix(UnityMatrixVp, p * v);
             nodeLODShader.SetFloat(FOV, cam.fieldOfView);
-            
+
             mpb.SetVectorArray(LayerRotations, layerRotations);
 
             for (int b = 0; b < nodeProtoCount; b++)
@@ -317,7 +313,7 @@ namespace SphereOpt
 
                 nodeBatch.ResetCounters();
                 nodeLODShader.Dispatch(nodeCSKernelId, Mathf.Max(1, Mathf.CeilToInt(nodeBatch.cursor / (float)nodeCSThreads)), 1, 1);
-                
+
                 ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[0], nodeArgBuffer, (b * 15 + 0 * 5 + 1) * 4);
                 ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[1], nodeArgBuffer, (b * 15 + 1 * 5 + 1) * 4);
                 ComputeBuffer.CopyCount(nodeBatch.lodBatchBuffers[2], nodeArgBuffer, (b * 15 + 2 * 5 + 1) * 4);
@@ -355,7 +351,7 @@ namespace SphereOpt
 
                 frameBatch.ResetCounters();
                 frameLODShader.Dispatch(frameCSKernelId, Mathf.Max(1, Mathf.CeilToInt(frameBatch.cursor / (float)frameCSThreads)), 1, 1);
-                
+
                 ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[0], frameArgBuffer, (b * 15 + 0 * 5 + 1) * 4);
                 ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[1], frameArgBuffer, (b * 15 + 1 * 5 + 1) * 4);
                 ComputeBuffer.CopyCount(frameBatch.lodBatchBuffers[2], frameArgBuffer, (b * 15 + 2 * 5 + 1) * 4);

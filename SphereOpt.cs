@@ -15,8 +15,7 @@ namespace SphereOpt
         private static AssetBundle bundle;
         private static readonly string AssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(SphereOpt)).Location);
 
-        private static Dictionary<int, InstDysonShellRenderer> instRenderers =
-            new Dictionary<int, InstDysonShellRenderer>();
+        private static Dictionary<int, InstDysonShellRenderer> instRenderers = new Dictionary<int, InstDysonShellRenderer>();
 
         private static AssetBundle Bundle
         {
@@ -57,6 +56,11 @@ namespace SphereOpt
             );
 
             CustomShaderManager.AddCustomShaderDesc(
+                "instFrameLOD2",
+                "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2"
+            );
+
+            CustomShaderManager.AddCustomShaderDesc(
                 "dysonnode",
                 "VF Shaders/Dyson Sphere/Node Inst REPLACE",
                 "VF Shaders/Dyson Sphere/Node Inst"
@@ -69,11 +73,12 @@ namespace SphereOpt
 
         public static InstDysonShellRenderer getInstDysonShellRendererForSphere(DysonSphere ds)
         {
-            if (!instRenderers.ContainsKey(ds.starData.id))
+            if (!instRenderers.TryGetValue(ds.starData.id, out InstDysonShellRenderer renderer))
             {
-                instRenderers[ds.starData.id] = new InstDysonShellRenderer(ds);
+                renderer = new InstDysonShellRenderer(ds);
+                instRenderers[ds.starData.id] = renderer;
             }
-            return instRenderers[ds.starData.id];
+            return renderer;
         }
 
         public static void RemoveRenderer(DysonSphere ds)

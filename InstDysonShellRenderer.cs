@@ -12,7 +12,8 @@ namespace SphereOpt
         public static Material HexMat
         {
             get {
-                if(_HexMat == null) SetupMesh();
+                if(_HexMat == null)
+                    SetupMesh();
                 return _HexMat;
             }
         }
@@ -20,7 +21,8 @@ namespace SphereOpt
         public static Mesh HexMesh
         {
             get {
-                if(_HexMesh == null) SetupMesh();
+                if(_HexMesh == null)
+                    SetupMesh();
                 return _HexMesh;
             }
         }
@@ -91,7 +93,8 @@ namespace SphereOpt
 
             emissionMultiplier[0] = material.GetFloat("_EmissionMultiplier");
 
-            for (int i = 1; i < 7; i++) {
+            for (int i = 1; i < 7; i++)
+            {
                 material = Resources.Load<Material>($"Dyson Sphere/Materials/dyson-shell-unlit-{i}");
                 cc2 = (Texture2D)material.GetTexture("_ColorControlTex2");
                 emm2 = (Texture2D)material.GetTexture("_EmissionTex2");
@@ -195,6 +198,7 @@ namespace SphereOpt
             var localRot = new Quaternion(0f, 0f, 0f, 1f);
             var sunPos = Vector3.zero;
             var sunPosMap = Vector3.zero;
+
             if (starData != null && gameData != null)
             {
                 var localPlanet = gameData.localPlanet;
@@ -204,13 +208,9 @@ namespace SphereOpt
                     : (Vector3)Maths.QInvRotateLF(localPlanet.runtimeRotation,
                         starData.uPosition - localPlanet.uPosition);
                 if (place == ERenderPlace.Starmap)
-                {
                     sunPosMap = (starData.uPosition - UIStarmap.viewTargetStatic) * 0.00025;
-                }
                 if (localPlanet != null && place == ERenderPlace.Universe)
-                {
                     localRot = new Quaternion(localPlanet.runtimeRotation.x, localPlanet.runtimeRotation.y, localPlanet.runtimeRotation.z, 0f - localPlanet.runtimeRotation.w);
-                }
             }
 
             var layer = 16;
@@ -227,6 +227,7 @@ namespace SphereOpt
                 default:
                     break;
             }
+
             Shader.SetGlobalVector(GlobalDSSunPosition, sunPos);
             Shader.SetGlobalVector(GlobalDSSunPositionMap, sunPosMap);
             HexMat.SetColor(SunColor, dysonSphere.sunColor);
@@ -235,14 +236,15 @@ namespace SphereOpt
 
             for (var i = 1; i <= 10; i++)
             {
-                if (instShellLayers[i] == null) continue;
+                if (instShellLayers[i] == null) 
+                    continue;
                 var shiftLayer = 1 << i;
                 if (!(layer != 16 && layer != 20 ? (editorMask & shiftLayer) > 0 : (gameMask & shiftLayer) > 0))
-                {
                     continue;
-                }
                 var instLayer = instShellLayers[i];
-                if (instLayer.hexPool.Count <= 0) continue;
+                if (instLayer.hexPool.Count <= 0)
+                    continue;
+
                 instLayer.SetProps();
                 //TODO: No need to reset the props every time, I think.
                 var dysonSphereLayer = dysonSphere.layersIdBased[i];

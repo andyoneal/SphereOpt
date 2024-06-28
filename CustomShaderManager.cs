@@ -33,12 +33,7 @@ namespace SphereOpt
 
         public static ComputeShader LoadComputeShader(string name)
         {
-            if (bundle != null)
-            {
-                return bundle.LoadAsset<ComputeShader>(name);
-            }
-
-            return null;
+            return bundle?.LoadAsset<ComputeShader>(name);
         }
 
         private static bool LoadShadersFromBundle()

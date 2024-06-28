@@ -14,6 +14,7 @@ namespace SphereOpt
         public int capacity;
         public NodeSegment[] nodes;
         public bool isBatchBufferDirty;
+        public MaterialPropertyBlock mpb;
 
         public void SetupMat(Material mat)
         {
@@ -76,7 +77,8 @@ namespace SphereOpt
         public void SetCapacity(int newCap)
         {
             var newArray = new NodeSegment[newCap];
-            if (nodes != null) Array.Copy(nodes, newArray, capacity);
+            if (nodes != null)
+                Array.Copy(nodes, newArray, capacity);
             nodes = newArray;
             capacity = newCap;
 

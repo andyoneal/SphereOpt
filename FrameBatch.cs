@@ -13,7 +13,9 @@ namespace SphereOpt
         public bool isBatchBufferDirty;
         public ComputeBuffer[] lodBatchBuffers;
         public Material protoMat;
+        public Material protoMatLOD2;
         public Mesh[] lodMeshes;
+        public MaterialPropertyBlock mpb;
 
         public void AddSegment(FrameSegment seg)
         {
@@ -83,7 +85,7 @@ namespace SphereOpt
             protoMat = UnityEngine.Object.Instantiate(mat);
             CustomShaderManager.ReplaceShaderIfAvailable(protoMat);
             protoMat.SetBuffer("_InstBuffer", buffer);
-            
+
             protoMatLOD2 = UnityEngine.Object.Instantiate(mat);
             CustomShaderManager.ApplyCustomShaderToMaterial(mat, "instFrameLOD2");
             protoMatLOD2.SetBuffer("_InstBuffer", buffer);

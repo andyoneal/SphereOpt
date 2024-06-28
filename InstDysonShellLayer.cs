@@ -149,7 +149,7 @@ namespace SphereOpt
         public int AddPolygonData(List<VectorLF3> polygon, VectorLF3[] polyn, bool clockwise) {
             if (polygonCursor + polygon.Count >= polygonPool.Length) SetCapacityPolygonPool(polygon.Count);
             for (var i = 0; i < polygon.Count; i++)
-            { 
+            {
                 polygonPool[polygonCursor + i].pos = polygon[i];
                 polygonPool[polygonCursor + i].normal = polyn[i];
             }
