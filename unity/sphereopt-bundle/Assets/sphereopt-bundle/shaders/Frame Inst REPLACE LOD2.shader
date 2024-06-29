@@ -98,10 +98,22 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
         //float3 worldNormal = normalize(mul((float3x3)unity_ObjectToWorld, objNormal));
         float3 worldNormal = normalize(worldPos);
 
-        float invRadiusSqr = rcp(dot(vertPos.xyz, vertPos.xyz));
-        float falloffDistance = pow(1.0 + clamp((5000 * 5000) / invRadiusSqr - 0.2, 0.0, 4.0), 2.0);
-        float3 sunPos = _Global_DS_RenderPlace <= 1u ? _Global_DS_SunPosition : _Global_DS_SunPosition_Map;
-        float3 lightray = normalize(worldPos - sunPos) * falloffDistance;
+//        float invRadiusSqr = rcp(dot(vertPos.xyz, vertPos.xyz));
+//        float falloffDistance = pow(1.0 + clamp((5000 * 5000) * invRadiusSqr - 0.2, 0.0, 4.0), 2.0);
+//        float3 sunPos = _Global_DS_RenderPlace <= 1u ? _Global_DS_SunPosition : _Global_DS_SunPosition_Map;
+//        float3 lightray = normalize(worldPos - sunPos) * falloffDistance;
+//
+//        float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
+//        float distViewToPos = length(rayViewToPos.xyz);
+//        //float scaled_distViewToPos = 10000 * (log(0.0001 * distViewToPos) + 1) / distViewToPos;
+//        float scaled_distViewToPos = (10000.0 * log(distViewToPos) - 82103.4) / distViewToPos;
+//        rayViewToPos.xyz = rayViewToPos.xyz * scaled_distViewToPos;
+//        worldPos = _WorldSpaceCameraPos.xyz + rayViewToPos.xyz;
+
+        float invFrameRadius = rsqrt(dot(vertPos.xyz, vertPos.xyz));
+        float falloffDistance = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
+
+        float3 lightray = _Global_DS_RenderPlace <= 1u ? normalize(worldPos.xyz - _Global_DS_SunPosition.xyz) * falloffDistance : normalize(worldPos.xyz - _Global_DS_SunPosition_Map.xyz) * falloffDistance;
 
         float3 rayViewToPos = worldPos.xyz - _WorldSpaceCameraPos.xyz;
         float distViewToPos = length(rayViewToPos.xyz);
@@ -135,12 +147,12 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
           uint layer = BitFieldExtract(layer_state_progress_color, 0, 4);
       
           //int layer = round(i.lightray_layer.w);
-          int layerMask = 1 << layer;
+          uint layerMask = 1 << layer;
           
           bool showLayerInGame = (layerMask & asint(_Global_DS_GameMaskL)) > 0;
           bool showLayerInEditor = (layerMask & asint(_Global_DS_EditorMaskL)) > 0;
           
-          float3 worldPos = i.worldPos.xyz;
+          float3 worldPos = i.worldPos_u.xyz;
           float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
           float3 lightDir = normalize(-i.lightray_index.xyz);
           
@@ -148,12 +160,12 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
           bool hideFarSide = asuint(_Global_DS_HideFarSide) > 0.5;
           hideFarSide = hideFarSide && isFarSide;
           bool isPainting = asuint(_Global_DS_PaintingLayerId) > 0;
-          bool notPaintingLayer = layer != asint(_Global_DS_PaintingLayerId);
+          bool notPaintingLayer = layer != asuint(_Global_DS_PaintingLayerId);
           bool hideNotPaintingLayer = notPaintingLayer && isPainting;
           
           bool showInEditor = !(hideNotPaintingLayer || hideFarSide) && showLayerInEditor;
           
-          uint renderPlace = asuint(_Global_DS_RenderPlace);
+          uint renderPlace = _Global_DS_RenderPlace;
           bool isShowing = renderPlace <= 1u ? showLayerInGame : showInEditor;
           if (!isShowing) discard;
           
@@ -175,11 +187,12 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
               }
           }
 
+          uint color = BitFieldExtract(layer_state_progress_color, 8, 24);
           float3 gamma_color = ((color >> int3(0,8,16)) & int3(255,255,255)) / 255.0;
           float4 painted_color = float4(GammaToLinearSpace(gamma_color.xyz), 0);
           painted_color.w = gamma_color.x + gamma_color.y + gamma_color.z > 0.01 ? 1.0 : 0.0;
           
-          float2 uv = float2(i.worldPos.w, i.worldNormal.w);
+          float2 uv = float2(i.worldPos_u.w, i.worldNormal_v.w);
           
           float3 emissionTex = tex2Dbias(_EmissionTex, float4(uv, 0,  -1)).xyz;
           float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
@@ -238,7 +251,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE LOD2" {
           // worldNormal.z = dot(i.tbnw_matrix_z.xyz, tangentNormal);
           // worldNormal.xyz = normalize(worldNormal.xyz);
           
-          float3 worldNormal = i.worldNormal.xyz;
+          float3 worldNormal = i.worldNormal_v.xyz;
           
           float nDotL = dot(worldNormal.xyz, lightDir.xyz);
           

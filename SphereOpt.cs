@@ -69,6 +69,7 @@ namespace SphereOpt
             Harmony.CreateAndPatchAll(typeof(Patch_VFPreload));
             Harmony.CreateAndPatchAll(typeof(Patch_DysonShell));
             Harmony.CreateAndPatchAll(typeof(Patch_DysonSphereSegmentRenderer));
+            Harmony.CreateAndPatchAll(typeof(Patch_DEBUG));
         }
 
         public static InstDysonShellRenderer getInstDysonShellRendererForSphere(DysonSphere ds)

@@ -154,6 +154,7 @@ inline void CSMain (
     */
 
     //if (layer > 0 && (!IsCameraOutsideObjBounds(_CamPosition, minPos, maxPos) || isInFrustum > 0))
+
     if (layer > 0 && isInFrustum > 0)
     {
         if (minDistanceToCamera > LOD1_RANGE * scale) {

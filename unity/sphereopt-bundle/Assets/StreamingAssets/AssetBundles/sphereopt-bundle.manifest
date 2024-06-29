@@ -1,9 +1,9 @@
 ManifestFileVersion: 0
-CRC: 41630195
+CRC: 2240898751
 Hashes:
   AssetFileHash:
     serializedVersion: 2
-    Hash: 01763f7725920dd57eb7fa7405a448ea
+    Hash: 7410ba2114b840e0e17f2cd4e18553b0
   TypeTreeHash:
     serializedVersion: 2
     Hash: 44d87ff5fe9d9e8c6f146a352e3e72cf
@@ -17,6 +17,7 @@ Assets:
 - Assets/sphereopt-bundle/shaders/Node Inst REPLACE.shader
 - Assets/sphereopt-bundle/shaders/Dyson Shell Unlit Instanced.shader
 - Assets/sphereopt-bundle/shaders/Frame Inst REPLACE.shader
+- Assets/sphereopt-bundle/shaders/Frame Inst REPLACE LOD2.shader
 - Assets/sphereopt-bundle/shaders/Node LOD.compute
 - Assets/sphereopt-bundle/shaders/Frame LOD.compute
 Dependencies: []

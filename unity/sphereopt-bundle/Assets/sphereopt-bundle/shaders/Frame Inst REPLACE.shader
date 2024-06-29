@@ -56,7 +56,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       float4 _DysonEmission;
       int _Global_DS_EditorMaskL;
       int _Global_DS_GameMaskL;
-      int _Global_DS_HideFarSide;
+      uint _Global_DS_HideFarSide;
       int _Global_DS_PaintingLayerId;
       float3 _Global_DS_SunPosition;
       uint _Global_DS_RenderPlace;
@@ -66,6 +66,28 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       sampler2D _MSTex;
       sampler2D _NormalTex;
       sampler2D _EmissionTex;
+
+        bool HandleHideOptions(int layer, bool isFarSide)
+        {
+            int layerMask = 1 << layer;
+            
+            UNITY_BRANCH
+            if (_Global_DS_RenderPlace >= 2u) {
+                if ((layerMask & _Global_DS_EditorMaskL) <= 0)
+                    return false;
+                    
+                if (isFarSide && _Global_DS_HideFarSide >= 1u)
+                    return false;
+                
+                bool isPainting = _Global_DS_PaintingLayerId > 0;
+                if (isPainting && layer != _Global_DS_PaintingLayerId)
+                    return false;
+                
+                return true;
+            } else {
+                return (layerMask & _Global_DS_GameMaskL) > 0;
+            }
+        }
 
       v2f vert( appdata_part v, uint instanceID : SV_InstanceID)
       {
@@ -159,171 +181,168 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       }
 
       fout frag(v2f i, float4 screenPos : SV_POSITION)
-      {
-          fout o;
-      
-          int layer = round(i.lightray_layer.w);
-          int layerMask = 1 << layer;
-          
-          bool showLayerInGame = (layerMask & asint(_Global_DS_GameMaskL)) > 0;
-          bool showLayerInEditor = (layerMask & asint(_Global_DS_EditorMaskL)) > 0;
-          
-          float3 worldPos;
-          worldPos.x = i.tbnw_matrix_x.w;
-          worldPos.y = i.tbnw_matrix_y.w;
-          worldPos.z = i.tbnw_matrix_z.w;
-          
-          float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
-          float3 lightDir = normalize(-i.lightray_layer.xyz);
-          
-          bool isFarSide = dot(viewDir, lightDir) > 0;
-          bool hideFarSide = asuint(_Global_DS_HideFarSide) > 0.5;
-          hideFarSide = hideFarSide && isFarSide;
-          bool isPainting = asuint(_Global_DS_PaintingLayerId) > 0;
-          bool notPaintingLayer = layer != asint(_Global_DS_PaintingLayerId);
-          bool hideNotPaintingLayer = notPaintingLayer && isPainting;
-          
-          bool showInEditor = !(hideNotPaintingLayer || hideFarSide) && showLayerInEditor;
-          
-          uint renderPlace = asuint(_Global_DS_RenderPlace);
-          bool isShowing = renderPlace <= 1u ? showLayerInGame : showInEditor;
-          if (!isShowing) discard;
-          
-          uint instIndex = (uint)(i.u_v_index.z + 0.5);
-          
-          uint layer_state_progress_color = _InstBuffer[instIndex].layer_state_progress_color;
-          uint state = BitFieldExtract(layer_state_progress_color, 4, 3);
-          bool hasProgress = BitFieldExtract(layer_state_progress_color, 7, 1) > 0u;
-          uint color = BitFieldExtract(layer_state_progress_color, 8, 24);
-        
-          float isPlanned = 0;
-          if (!hasProgress) {
-              if (renderPlace >= 2u) {
-                if (state <= 1u) {
-                  uint2 pixelPos = screenPos.xy;
-                  int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
-                  if (mask != 0) discard;
-                }
-                isPlanned = 1;
-              } else {
+        {
+            fout o;
+            
+            int layer = round(i.lightray_layer.w);
+            float3 worldPos = float3(
+                i.tbnw_matrix_x.w,
+                i.tbnw_matrix_y.w,
+                i.tbnw_matrix_z.w
+            );
+            
+            float3 viewDir = normalize(_WorldSpaceCameraPos - worldPos);
+            float3 lightDir = normalize(-i.lightray_layer.xyz);
+            bool isFarSide = dot(viewDir, lightDir) > 0;
+            
+            bool isShowing = HandleHideOptions(layer, isFarSide);
+            if (!isShowing)
                 discard;
-              }
-          }
             
-//          uint color = _InstBuffer[instIndex].color;
-          float3 gamma_color = ((color >> int3(0,8,16)) & int3(255,255,255)) / 255.0;
-          float4 painted_color = float4(GammaToLinearSpace(gamma_color.xyz), 0);
-          painted_color.w = gamma_color.x + gamma_color.y + gamma_color.z > 0.01 ? 1.0 : 0.0;
-          
-          float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
-          float emissionLuminance = dot(emissionTex.xyz, float3(0.3, 0.6, 0.1));
-          float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
-          float emissionBoost = renderPlace >= 1u ? 9.0 : 6.0;
-          emissionColor = emissionColor * emissionBoost;
-          
-          float3 albedo = tex2D(_MainTex, i.u_v_index.xy).xyz;
-          float albedoLuminance = dot(albedo.xyz, float3(0.3, 0.6, 0.1));
-          
-          UNITY_BRANCH
-          if (renderPlace <= 1u) {
-            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.2);
-            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.2);
-            albedo = lerp(standardStrength, boostedStrength, 0.7);
-          } else {
-            albedoLuminance = albedoLuminance * (1.0 - isPlanned);
-            float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.3);
-            float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.3);
-            albedo = lerp(standardStrength, boostedStrength, 0.6);
+            uint instIndex = (uint)(i.u_v_index.z + 0.5);
+            uint layer_state_progress_color = _InstBuffer[instIndex].layer_state_progress_color;
+            uint state = BitFieldExtract(layer_state_progress_color, 4, 3);
+            bool hasProgress = BitFieldExtract(layer_state_progress_color, 7, 1) > 0u;
             
-            bool usePaintedColor = painted_color.w > 0.5;
-            float paintedColorLuminance = dot(painted_color.xyz, float3(0.3, 0.6, 0.1));
-            float paintedColorLumAdjust = min(1.0, 0.1 / paintedColorLuminance);
+        
+            float isPlanned = 0;
+            if (!hasProgress) {
+                if (_Global_DS_RenderPlace >= 2u) {
+                    if (state <= 1u) {
+                    uint2 pixelPos = screenPos.xy;
+                    int mask = (pixelPos.x & 1) - (pixelPos.y & 1);
+                    if (mask != 0) discard;
+                }
+                    isPlanned = 1;
+                } else {
+                    discard;
+                }
+            }
+        
+            uint color = BitFieldExtract(layer_state_progress_color, 8, 24);
+            float3 gamma_color = ((color >> int3(0,8,16)) & int3(255,255,255)) / 255.0;
+            float4 painted_color = float4(GammaToLinearSpace(gamma_color.xyz), 0);
+            painted_color.w = gamma_color.x + gamma_color.y + gamma_color.z > 0.01 ? 1.0 : 0.0;
             
-            float3 dysonEditorDefaultColor = usePaintedColor ? painted_color.xyz : float3(0, 3, 0.75);
-            emissionColor = lerp(emissionColor, dysonEditorDefaultColor, isPlanned);
+            float3 emissionTex = tex2Dbias(_EmissionTex, float4(i.u_v_index.xy, 0,  -1)).xyz;
+            float emissionLuminance = dot(emissionTex, float3(0.3, 0.6, 0.1));
+            float3 emissionColor = lerp(_DysonEmission.xyz * emissionLuminance, painted_color.xyz * emissionLuminance, painted_color.w);
+            float emissionBoost = _Global_DS_RenderPlace >= 1u ? 9.0 : 6.0;
+            emissionColor = emissionColor * emissionBoost;
             
-            float3 dysonEditorPaintedTint = float3(5,5,5) * painted_color.xyz * paintedColorLumAdjust;
-            float3 dysonEditorHoverDeleteColor = float3(3.7, 0.075, 0.125);
-            dysonEditorHoverDeleteColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverDeleteColor;
-            float3 dysonEditorHoverWhileSelectedColor = float3(0.75, 1.25, 3.9);
-            dysonEditorHoverWhileSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverWhileSelectedColor;
-            float3 dysonEditorSelectedColor = float3(0.5, 1.0, 3.85);
-            dysonEditorSelectedColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorSelectedColor;
-            float3 dysonEditorHoverColor = float3(3.5, 2.0, 1.0);
-            dysonEditorHoverColor = usePaintedColor ? dysonEditorPaintedTint : dysonEditorHoverColor;
+            float3 albedo = tex2D(_MainTex, i.u_v_index.xy).xyz;
+            float albedoLuminance = dot(albedo, float3(0.3, 0.6, 0.1));
+        
+            UNITY_BRANCH
+            if (_Global_DS_RenderPlace <= 1u) {
+                float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.2);
+                float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.2);
+                albedo = lerp(standardStrength, boostedStrength, 0.7);
+            } else {
+                albedoLuminance = albedoLuminance * (1.0 - isPlanned);
+                float3 standardStrength = lerp(albedoLuminance, painted_color.xyz, painted_color.w * 0.3);
+                float3 boostedStrength = lerp(albedoLuminance, painted_color.xyz * albedoLuminance, painted_color.w * 0.3);
+                albedo = lerp(standardStrength, boostedStrength, 0.6);
+                
+                bool usePaintedColor = painted_color.w > 0.5;
+                
+                float3 dysonEditorDefaultColor = usePaintedColor ? painted_color.xyz : float3(0, 3, 0.75);
+                emissionColor = lerp(emissionColor, dysonEditorDefaultColor, isPlanned);
+                
+                float paintedColorLuminance = dot(painted_color.xyz, float3(0.3, 0.6, 0.1));
+                float paintedColorLumAdjust = 5.0 * saturate(0.1 / paintedColorLuminance);
+                float3 dysonEditorPaintedTint = painted_color.xyz * paintedColorLumAdjust;
+                
+                float3 dysonEditorHoverDeleteColor = usePaintedColor ? dysonEditorPaintedTint : float3(3.7, 0.075, 0.125);
+                float3 dysonEditorHoverWhileSelectedColor = usePaintedColor ? dysonEditorPaintedTint : float3(0.75, 1.25, 3.9);
+                float3 dysonEditorSelectedColor = usePaintedColor ? dysonEditorPaintedTint : float3(0.5, 1.0, 3.85);
+                float3 dysonEditorHoverColor = usePaintedColor ? dysonEditorPaintedTint : float3(3.5, 2.0, 1.0);
+
+                UNITY_FLATTEN
+                switch(state)
+                {
+                    case 1u: // hover select
+                        emissionColor = dysonEditorHoverColor;
+                        break;
+                    case 2u: // selected
+                        emissionColor = dysonEditorSelectedColor;
+                        break;
+                    case 3u: // hover select while selected
+                        emissionColor = dysonEditorHoverWhileSelectedColor;
+                        break;
+                    case 4u: // hover delete
+                        emissionColor = dysonEditorHoverDeleteColor;
+                        break;
+                }
+            }
+        
+            float3 sunToCamDir = normalize(_WorldSpaceCameraPos - _Global_DS_SunPosition);
+            float sideInView = dot(sunToCamDir, -lightDir); // 1 if top of frame is facing player, 0 if viewing side on, -1 if bottom of frame is facing player (directly behind sun)
+            float innerFalloff = _Global_DS_RenderPlace >= 1u ? 1.0 : pow(saturate(1.02 + sideInView), 0.4); // 1 until view side on, then falloff as we view the bottom of frame until it moves behind the star. minimum .2
             
-            emissionColor = state >= 1u ? dysonEditorHoverColor : emissionColor; //state == 1 (hover select)
-            emissionColor = state >= 2u ? dysonEditorSelectedColor : emissionColor; //state == 2 (selected)
-            emissionColor = state >= 3u ? dysonEditorHoverWhileSelectedColor : emissionColor; //state == 3 (hover select while selected)
-            emissionColor = state >= 4u ? dysonEditorHoverDeleteColor : emissionColor; //state == 4 (hover delete)
-          }
-          
-          float3 viewFromSunDir = normalize(_WorldSpaceCameraPos.xyz - _Global_DS_SunPosition.xyz);
-          float sideInView = dot(viewFromSunDir.xyz, -lightDir); // 1 if top of frame is facing player, 0 if viewing side on, -1 if bottom of frame is facing player (directly behind sun)
-          float innerFalloff = pow(saturate(1.02 + sideInView), 0.4); // 1 until view side on, then falloff as we view the bottom of frame until it moves behind the star. minimum .2
-          innerFalloff = renderPlace == 0u ? innerFalloff : 1;
-          
-          float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0, -1)));
-          float3 tangentNormal = normalize(unpackedNormal);
-          
-          float3 worldNormal;
-          worldNormal.x = dot(i.tbnw_matrix_x.xyz, tangentNormal);
-          worldNormal.y = dot(i.tbnw_matrix_y.xyz, tangentNormal);
-          worldNormal.z = dot(i.tbnw_matrix_z.xyz, tangentNormal);
-          worldNormal.xyz = normalize(worldNormal.xyz);
-          
-          float nDotL = dot(worldNormal.xyz, lightDir.xyz);
-          
-          float3 halfDir = normalize(viewDir + lightDir);
-          
-          float ambientLightFalloff = saturate(pow(nDotL * 0.5 + 0.6, 3.0)); //expo: -1=0, 0=0.2, 0.8=1
-          float3 editorViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos.xyz);//direction to camera but slightly higher
-          float editorNDotV = max(0, dot(worldNormal.xyz, editorViewDir));
-          ambientLightFalloff = renderPlace >= 1u ? ambientLightFalloff + editorNDotV : ambientLightFalloff;
-          
-          float nDotV = max(0, dot(worldNormal.xyz, viewDir.xyz));
-          float nDotH = max(0, dot(worldNormal.xyz, halfDir.xyz));
-          float vDotH = max(0, dot(viewDir.xyz, halfDir.xyz));
-          float clamped_nDotL = max(0, nDotL);
-          
-          float2 msTex = tex2D(_MSTex, i.u_v_index.xy).xw;
-          float metallic = saturate(msTex.x * 0.85 + 0.149);
-          float perceptualRoughness = saturate(1 - msTex.y * 0.97);
-          float roughness = perceptualRoughness * perceptualRoughness;
-          float scaledMetallic = 0.5 + metallic;
-          float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
-          
-          float starLightStrength = length(i.lightray_layer.xyz);
-          
-          float3 ambientLightStrength = lerp(1.0, starLightStrength, ambientLightFalloff);
-          float3 ambientLight = float3(0.2, 0.2, 0.2) * _SunColor.xyz * ambientLightStrength * ambientLightFalloff;
-          float3 ambientColor = ambientLight.xyz * albedo.xyz;
-          
-          float3 sunColor = _SunColor.xyz * starLightStrength;
-          sunColor.xyz = float3(1.25, 1.25, 1.25) * sunColor.xyz;
-          float3 highlightColor = sunColor * clamped_nDotL * albedo.xyz;
-          
-          float3 specularColor = float3(0.3, 0.3, 0.3) * lerp(float3(1,1,1), albedo.xyz, metallic);
-          specularColor = specularColor.xyz * sunColor;
-          specularColor.xyz = specularColor.xyz * clamped_nDotL * (specularTerm + INV_TEN_PI);
-          
-          float3 specColorMod = 0.2 * albedo.xyz * (1.0 - metallic) + metallic;
-          specularColor = specularColor * specColorMod.xyz;
-          
-          float3 finalColor = ambientColor.xyz * (1.0 - metallic * 0.6)
-              + highlightColor.xyz * pow(1.0 - metallic, 0.6)
-              + specularColor.xyz;
-          finalColor = finalColor.xyz * innerFalloff;
-          
-          float finalColorLuminance = dot(finalColor.xyz, float3(0.3, 0.6, 0.1));
-          finalColor.xyz = finalColorLuminance > 1 ? (finalColor.xyz / finalColorLuminance) * (log(log(finalColorLuminance) + 1) + 1) : finalColor.xyz;
-          
-          finalColor.xyz = finalColor.xyz + emissionColor;
-          
-          o.sv_target.xyz = finalColor;
-          o.sv_target.w = 1;
-          return o;
-      }
+            float3 unpackedNormal = UnpackNormal(tex2Dbias(_NormalTex, float4(i.u_v_index.xy, 0, -1)));
+            float3 tangentNormal = normalize(unpackedNormal);
+        
+            float3 worldNormal = normalize(float3(
+                dot(i.tbnw_matrix_x.xyz, tangentNormal),
+                dot(i.tbnw_matrix_y.xyz, tangentNormal),
+                dot(i.tbnw_matrix_z.xyz, tangentNormal)
+            ));
+        
+            float nDotL = dot(worldNormal, lightDir);
+            float3 halfDir = normalize(viewDir + lightDir);
+            float nDotV = max(0, dot(worldNormal, viewDir));
+            float nDotH = max(0, dot(worldNormal, halfDir));
+            float vDotH = max(0, dot(viewDir, halfDir));
+            float clamped_nDotL = max(0, nDotL);
+            
+            float2 msTex = tex2D(_MSTex, i.u_v_index.xy).xw;
+            float metallic = saturate(msTex.x * 0.85 + 0.149);
+            float perceptualRoughness = saturate(1 - msTex.y * 0.97);
+            float roughness = perceptualRoughness * perceptualRoughness;
+            float scaledMetallic = 0.5 + metallic;
+            
+            float specularTerm = GGX(roughness, scaledMetallic, nDotH, nDotV, clamped_nDotL, vDotH);
+            
+            float ambientLightFalloff = saturate(pow(nDotL * 0.5 + 0.6, 3.0)); //expo: -1=0, 0=0.2, 0.8=1
+            
+            if (_Global_DS_RenderPlace >= 1u)
+            {
+                float3 editorViewDir = normalize(float3(0,3,0) + _WorldSpaceCameraPos);//direction to camera but slightly higher
+                float editorNDotV = max(0, dot(worldNormal, editorViewDir));
+                ambientLightFalloff = ambientLightFalloff + editorNDotV;
+            }
+            
+            float distFromStar = length(i.lightray_layer.xyz);
+            float3 ambientLightStrength = lerp(1.0, distFromStar, ambientLightFalloff);
+            float3 ambientLight = _SunColor.xyz * 0.2 * ambientLightFalloff * ambientLightStrength;
+            float3 ambientColor = ambientLight * albedo;
+            
+            float3 sunColor = _SunColor.xyz * (1.25 * distFromStar);
+            float3 highlightColor = sunColor * clamped_nDotL * albedo;
+        
+            float dielectric = 1.0 - metallic;
+            float3 specularColor = 0.3 * lerp(albedo, float3(1,1,1), dielectric);
+            specularColor = specularColor * sunColor;
+            specularColor = specularColor * clamped_nDotL * (specularTerm + INV_TEN_PI);
+            
+            float3 specColorMod = 0.2 * albedo * dielectric + metallic;
+            specularColor = specularColor * specColorMod;
+            
+            float3 finalColor = ambientColor * (dielectric * 0.6)
+              + highlightColor * pow(dielectric, 0.6)
+              + specularColor;
+            finalColor = finalColor * innerFalloff;
+            
+            float finalColorLuminance = dot(finalColor, float3(0.3, 0.6, 0.1));
+            finalColor = finalColorLuminance > 1 ? (finalColor / finalColorLuminance) * (log(log(finalColorLuminance) + 1) + 1) : finalColor;
+            
+            finalColor = finalColor + emissionColor;
+            
+            o.sv_target.xyz = finalColor;
+            o.sv_target.w = 1;
+            return o;
+        }
       ENDCG
     }
   }

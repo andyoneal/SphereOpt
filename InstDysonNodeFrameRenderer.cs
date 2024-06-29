@@ -44,7 +44,7 @@ namespace SphereOpt
         private static readonly int LOD1IDBuffer = Shader.PropertyToID("_LOD1_ID_Buffer");
         private static readonly int LOD2IDBuffer = Shader.PropertyToID("_LOD2_ID_Buffer");
         
-        private static readonly MaterialPropertyBlock mpb = new MaterialPropertyBlock();
+        //private static readonly MaterialPropertyBlock mpb = new MaterialPropertyBlock();
 
         public static void SetupBatches()
         {
@@ -149,6 +149,8 @@ namespace SphereOpt
             {
                 frameBatches[i].protoMat.SetColor(SunColor, dysonSphere.sunColor);
                 frameBatches[i].protoMat.SetColor(DysonEmission, dysonSphere.emissionColor);
+                frameBatches[i].protoMatLOD2.SetColor(SunColor, dysonSphere.sunColor);
+                frameBatches[i].protoMatLOD2.SetColor(DysonEmission, dysonSphere.emissionColor);
                 frameBatches[i].SetBatchBufferDirty();
             }
         }
@@ -296,7 +298,7 @@ namespace SphereOpt
             nodeLODShader.SetMatrix(UnityMatrixVp, p * v);
             nodeLODShader.SetFloat(FOV, cam.fieldOfView);
 
-            mpb.SetVectorArray(LayerRotations, layerRotations);
+            
 
             for (int b = 0; b < nodeProtoCount; b++)
             {
@@ -305,6 +307,8 @@ namespace SphereOpt
                     continue;
 
                 nodeBatch.SyncBufferData();
+                
+                nodeBatch.mpb.SetVectorArray(LayerRotations, layerRotations);
 
                 nodeLODShader.SetBuffer(nodeCSKernelId, InstBuffer, nodeBatch.buffer);
                 nodeLODShader.SetBuffer(nodeCSKernelId, LOD0IDBuffer, nodeBatch.lodBatchBuffers[0]);
@@ -322,10 +326,10 @@ namespace SphereOpt
                 {
                     if (shouldRender)
                     {
-                        mpb.SetBuffer(InstIndexBuffer, nodeBatch.lodBatchBuffers[i]);
+                        nodeBatch.mpb.SetBuffer(InstIndexBuffer, nodeBatch.lodBatchBuffers[i]);
                         Graphics.DrawMeshInstancedIndirect(nodeBatch.lodMeshes[i], 0, nodeBatch.protoMat,
                             new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), nodeArgBuffer,
-                            (b * 15 + i * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
+                            (b * 15 + i * 5) * 4, nodeBatch.mpb, ShadowCastingMode.Off, false, layer);
                     }
                 }
             }
@@ -343,6 +347,8 @@ namespace SphereOpt
                     continue;
 
                 frameBatch.SyncBufferData();
+                
+                frameBatch.mpb.SetVectorArray(LayerRotations, layerRotations);
 
                 frameLODShader.SetBuffer(frameCSKernelId, InstBuffer, frameBatch.buffer);
                 frameLODShader.SetBuffer(frameCSKernelId, LOD0IDBuffer, frameBatch.lodBatchBuffers[0]);
@@ -361,10 +367,10 @@ namespace SphereOpt
                     if (shouldRender)
                     {
                         Material mat = i == 2 ? frameBatch.protoMatLOD2 : frameBatch.protoMat;
-                        mpb.SetBuffer(InstIndexBuffer, frameBatch.lodBatchBuffers[i]);
+                        frameBatch.mpb.SetBuffer(InstIndexBuffer, frameBatch.lodBatchBuffers[i]);
                         Graphics.DrawMeshInstancedIndirect(frameBatch.lodMeshes[i], 0, mat,
                             new Bounds(Vector3.zero, new Vector3(300000f, 300000f, 300000f)), frameArgBuffer,
-                            (b * 15 + i * 5) * 4, mpb, ShadowCastingMode.Off, false, layer);
+                            (b * 15 + i * 5) * 4, frameBatch.mpb, ShadowCastingMode.Off, false, layer);
                     }
                 }
             }

@@ -68,7 +68,6 @@ namespace SphereOpt
         {
             if (!autoReplaceShaderMap.TryGetValue(mat.shader.name, out var customShaderDesc)) return false;
 
-            SphereOpt.logger.LogInfo($"replacing shader on: {mat.name}");
             ApplyCustomShaderToMaterial(mat, customShaderDesc);
             return true;
         }
@@ -95,6 +94,7 @@ namespace SphereOpt
 
         private static void ApplyCustomShaderToMaterial(Material mat, CustomShaderDesc replacementShader)
         {
+            SphereOpt.logger.LogInfo($"replacing shader on: {mat.name} > {replacementShader.shader.name}");
             mat.shader = replacementShader.shader;
 
             if(!shaderReplacedOnMaterialsMap.TryGetValue(replacementShader, out var matList))

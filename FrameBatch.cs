@@ -44,6 +44,7 @@ namespace SphereOpt
             buffer?.Release();
             buffer = new ComputeBuffer(capacity, 32);
             protoMat.SetBuffer("_InstBuffer", buffer);
+            protoMatLOD2.SetBuffer("_InstBuffer", buffer);
 
             for (int i = 0; i < 3; i++)
             {
@@ -85,10 +86,12 @@ namespace SphereOpt
             protoMat = UnityEngine.Object.Instantiate(mat);
             CustomShaderManager.ReplaceShaderIfAvailable(protoMat);
             protoMat.SetBuffer("_InstBuffer", buffer);
+            SphereOpt.logger.LogInfo($"protomat: {protoMat.shader.name}");
 
             protoMatLOD2 = UnityEngine.Object.Instantiate(mat);
-            CustomShaderManager.ApplyCustomShaderToMaterial(mat, "instFrameLOD2");
+            CustomShaderManager.ApplyCustomShaderToMaterial(protoMatLOD2, "instFrameLOD2");
             protoMatLOD2.SetBuffer("_InstBuffer", buffer);
+            SphereOpt.logger.LogInfo($"protoMatLOD2: {protoMatLOD2.shader.name}");
         }
 
         public void SetupMeshes(Mesh mesh)
@@ -117,6 +120,9 @@ namespace SphereOpt
             meshSimplifier.SimplificationOptions = options;
             meshSimplifier.SimplifyMesh(0.2f);
             lodMeshes[2] = meshSimplifier.ToMesh();
+
+            lodMeshes[2].normals = null;
+            lodMeshes[2].tangents = null;
         }
 
         public void ResetCounters()
