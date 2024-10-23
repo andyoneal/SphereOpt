@@ -32,8 +32,6 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
 
       struct appdata_part {
           float3 vertex : POSITION;
-          float4 tangent : TANGENT;
-          float3 normal : NORMAL;
           float2 texcoord : TEXCOORD0;
       };
 
@@ -69,6 +67,43 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
       sampler2D _MSTex;
       sampler2D _NormalTex;
       sampler2D _EmissionTex;
+
+      
+        float3 UnpackNormal(uint packed) {
+            float3 normal;
+            uint nx = packed & 3u;
+            uint ny = (packed >> 2) & 3u;
+            uint nz = (packed >> 4) & 3u;
+            
+            normal.x = nx == 1u ? 1.0 : (nx == 2u ? -1.0 : 0.0);
+            normal.y = ny == 1u ? 1.0 : (ny == 2u ? -1.0 : 0.0);
+            normal.z = nz == 1u ? 1.0 : (nz == 2u ? -1.0 : 0.0);
+            return normal;
+        }
+
+        float4 UnpackTangent(uint packed) {
+            float4 tangent;
+            uint tx = (packed >> 6) & 3u;
+            uint ty = (packed >> 8) & 3u;
+            uint tz = (packed >> 10) & 3u;
+            
+            tangent.x = tx == 1u ? 1.0 : (tx == 2u ? -1.0 : 0.0);
+            tangent.y = ty == 1u ? 1.0 : (ty == 2u ? -1.0 : 0.0);
+            tangent.z = tz == 1u ? 1.0 : (tz == 2u ? -1.0 : 0.0);
+            tangent.w = (packed >> 12) & 1u ? -1.0 : 1.0;
+            return tangent;
+        }
+
+        float2 UnpackUV(uint packed) {
+            float2 uv;
+            uint u = (packed >> 8) & 255u;
+            uint v = packed & 255u;
+            
+            uv.x = lerp(0.797, 0.960, u / 255.0);
+            uv.y = lerp(0.156, 0.483, v / 255.0);
+            return uv;
+        }
+
 
 
       v2f vert( appdata_part v, uint instanceID : SV_InstanceID)
@@ -107,13 +142,21 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         float3x3 rotateMatrix = transpose(float3x3(x_axis, y_axis, z_axis));
 
         float3 vertPos = 100 * v.vertex.y * y_axis.xyz + 100 * v.vertex.x * x_axis.xyz + stretchedPos.xyz;
-        float3 objNormal = mul(rotateMatrix, v.normal.xyz);
-        float3 objTangent = mul(rotateMatrix, v.tangent.xyz);
+
+        uint packed_normal_tangent = asuint(v.texcoord.x);
+        uint packed_uv = asuint(v.texcoord.y);
+
+        float3 normal = UnpackNormal(packed_normal_tangent);
+        float4 tangent = UnpackTangent(packed_normal_tangent);
+        float2 uv = UnpackUV(packed_uv);
+
+        float3 objNormal = mul(rotateMatrix, normal);
+        float3 objTangent = mul(rotateMatrix, tangent.xyz);
 
         float3 worldPos = mul(unity_ObjectToWorld, float4(vertPos.xyz, 1));
         float3 worldNormal = normalize(mul((float3x3)unity_ObjectToWorld, objNormal.xyz));
         float3 worldTangent = normalize(mul((float3x3)unity_ObjectToWorld, objTangent.xyz));
-        float3 worldBinormal = calculateBinormal(float4(worldTangent, v.tangent.w), worldNormal);
+        float3 worldBinormal = calculateBinormal(float4(worldTangent, tangent.w), worldNormal);
 
         float invFrameRadius = rsqrt(dot(vertPos.xyz, vertPos.xyz));
         float falloffDistance = pow(1 + min(4, max(0, 5000 * invFrameRadius - 0.2)), 2);
@@ -146,7 +189,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
         o.tbnw_matrix_z.z = worldNormal.z;
         o.tbnw_matrix_z.w = worldPos.z;
 
-        o.u_v_index.xy = v.texcoord.xy;
+        o.u_v_index.xy = uv;
         o.u_v_index.z = instIndex;
 
         o.lightray_layer.xyz = lightray;

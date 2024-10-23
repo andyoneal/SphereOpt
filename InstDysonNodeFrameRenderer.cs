@@ -45,6 +45,7 @@ namespace SphereOpt
             {
                 lodMeshes[i] = new Mesh[3];
                 lodMeshes[i][0] = DysonSphereSegmentRenderer.protoMeshes[i];
+                PackMeshData(lodMeshes[i][0]);
                 meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
                 var options = SimplificationOptions.Default;
                 if (i == 0)
@@ -63,11 +64,60 @@ namespace SphereOpt
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
                 lodMeshes[i][1] = meshSimplifier.ToMesh();
+                PackMeshData(lodMeshes[i][1]);
                 meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.2f);
                 lodMeshes[i][2] = meshSimplifier.ToMesh();
+                PackMeshData(lodMeshes[i][2]);
             }
+        }
+
+        private static void PackMeshData(Mesh mesh) {
+            Vector3[] normals = mesh.normals;
+            Vector4[] tangents = mesh.tangents;
+            Vector2[] originalUVs = mesh.uv;
+            Vector2[] packedUVs = new Vector2[mesh.vertexCount];
+
+            for (int i = 0; i < mesh.vertexCount; i++) {
+                // Pack normal/tangent directions
+                uint packed = 0;
+
+                // Normal XYZ (2 bits each: 00=0, 01=1, 10=-1)
+                packed |= (normals[i].x > 0.5f) ? 1u : (normals[i].x < -0.5f ? 2u : 0u);
+                packed |= (normals[i].y > 0.5f) ? (1u << 2) : (normals[i].y < -0.5f ? (2u << 2) : 0u);
+                packed |= (normals[i].z > 0.5f) ? (1u << 4) : (normals[i].z < -0.5f ? (2u << 4) : 0u);
+
+                // Tangent XYZ (2 bits each)
+                packed |= (tangents[i].x > 0.5f) ? (1u << 6) : (tangents[i].x < -0.5f ? (2u << 6) : 0u);
+                packed |= (tangents[i].y > 0.5f) ? (1u << 8) : (tangents[i].y < -0.5f ? (2u << 8) : 0u);
+                packed |= (tangents[i].z > 0.5f) ? (1u << 10) : (tangents[i].z < -0.5f ? (2u << 10) : 0u);
+
+                // Tangent W (1 bit)
+                if (tangents[i].w < 0) packed |= (1u << 12);
+
+                // Pack UV coordinates
+                // Map U from [0.797, 0.960] to [0, 255]
+                byte packedU = (byte)((originalUVs[i].x - 0.797f) * (255f / (0.960f - 0.797f)));
+                // Map V from [0.156, 0.483] to [0, 255]
+                byte packedV = (byte)((originalUVs[i].y - 0.156f) * (255f / (0.483f - 0.156f)));
+                var packedUV = (uint)((packedU << 8) | packedV);
+
+                // Store in Vector2
+                packedUVs[i] = new Vector2(
+                    asfloat(packed),     // Store normal/tangent bits as float
+                    asfloat(packedUV)    // Store UV bits as float
+                );
+            }
+
+            mesh.uv = packedUVs;
+            // Clear original data since we've packed it
+            mesh.normals = null;
+            mesh.tangents = null;
+        }
+
+        private static float asfloat(uint x) {
+            return System.BitConverter.ToSingle(System.BitConverter.GetBytes(x), 0);
         }
 
         public static void SetupBuffers()
