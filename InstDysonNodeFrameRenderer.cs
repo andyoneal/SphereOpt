@@ -70,6 +70,57 @@ namespace SphereOpt
             }
         }
 
+        public static void SetupQuadMeshes()
+        {
+            if (lodMeshes == null) return;
+            Mesh mesh = FrameQuadMesh();
+            
+            lodMeshes = new Mesh[DysonSphereSegmentRenderer.totalProtoCount][];
+
+            for (int i = 0; i < DysonSphereSegmentRenderer.totalProtoCount; i++)
+            {
+                lodMeshes[i] = new Mesh[3];
+                lodMeshes[i][0] = mesh;
+                lodMeshes[i][1] = mesh;
+                lodMeshes[i][2] = mesh;
+            }
+        }
+        
+        public static Mesh FrameQuadMesh()
+        {
+            Mesh quadMesh = new Mesh();
+            
+            Vector3[] vertices = new Vector3[4]
+            {
+                new Vector3(-0.5f, 0.015f, 0f),
+                new Vector3(0.5f, 0.015f, 0f),
+                new Vector3(-0.5f, 0.015f, 1f),
+                new Vector3(0.5f, 0.015f, 1f)
+            };
+            quadMesh.vertices = vertices;
+            
+            int[] tris = new int[6]
+            {
+                0, 2, 1,
+                2, 3, 1
+            };
+            quadMesh.triangles = tris;
+            
+            quadMesh.RecalculateNormals();
+            quadMesh.RecalculateTangents();
+            
+            Vector2[] uv = new Vector2[4]
+            {
+                new Vector2(0.85688f, 0.4275f),
+                new Vector2(0.81705f, 0.4351f),
+                new Vector2(0.81705f, 0.4351f),
+                new Vector2(0.85699f, 0.4275f)
+            };
+            quadMesh.uv = uv;
+            
+            return quadMesh;
+        }
+
         public static void SetupBuffers()
         {
             if (lodBatchBuffers != null) return;
