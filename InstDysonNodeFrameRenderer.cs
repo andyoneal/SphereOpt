@@ -45,7 +45,6 @@ namespace SphereOpt
             {
                 lodMeshes[i] = new Mesh[3];
                 lodMeshes[i][0] = DysonSphereSegmentRenderer.protoMeshes[i];
-                PackMeshData(lodMeshes[i][0]);
                 meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
                 var options = SimplificationOptions.Default;
                 if (i == 0)
@@ -64,11 +63,16 @@ namespace SphereOpt
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
                 lodMeshes[i][1] = meshSimplifier.ToMesh();
-                PackMeshData(lodMeshes[i][1]);
                 meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.2f);
                 lodMeshes[i][2] = meshSimplifier.ToMesh();
+                
+                SphereOpt.logger.LogWarning($"lodMeshes[{i}][0]");
+                PackMeshData(lodMeshes[i][0]);
+                SphereOpt.logger.LogWarning($"lodMeshes[{i}][1]");
+                PackMeshData(lodMeshes[i][1]);
+                SphereOpt.logger.LogWarning($"lodMeshes[{i}][2]");
                 PackMeshData(lodMeshes[i][2]);
             }
         }
