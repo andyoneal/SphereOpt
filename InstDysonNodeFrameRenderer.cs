@@ -65,8 +65,15 @@ namespace SphereOpt
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
                 lodMeshes[i][1] = meshSimplifier.ToMesh();
-                
-                lodMeshes[i][2] = CreateSevenQuadLOD(DysonSphereSegmentRenderer.protoMeshes[i], 0.09f);
+
+                if (i == 1)
+                {
+                    lodMeshes[i][2] = CreateSevenQuadLOD(DysonSphereSegmentRenderer.protoMeshes[i], 0.09f);
+                }
+                else
+                {
+                    lodMeshes[i][2] = meshSimplifier.ToMesh();
+                }
             }
         }
 
@@ -115,6 +122,7 @@ namespace SphereOpt
         float maxX = origVerts.Max(v => v.x);
         float minY = origVerts.Min(v => v.y);
         float maxY = origVerts.Max(v => v.y);
+        float midY = 0.015f;
         float minZ = origVerts.Min(v => v.z);
         float maxZ = origVerts.Max(v => v.z);
         
@@ -148,75 +156,78 @@ namespace SphereOpt
         float centerStartX = leftX + sideWidth + sideGap;
         float centerEndX = centerStartX + centerWidth;
         float rightX = maxX;
+        float capLength = 0.11f;
+        float minSideZ = minZ + capLength;
+        float maxSideZ = maxZ - capLength;
 
         // Add quads with precise UV mapping
         // Top cap
-        AddQuad(
-            new Vector3(minX, maxY, minZ),
-            new Vector3(maxX, maxY, minZ),
-            new Vector3(maxX, maxY, maxZ),
-            new Vector3(minX, maxY, maxZ),
-            upperCapUVMin, upperCapUVMax,
-            Vector3.up
-        );
+        // AddQuad(
+        //     new Vector3(minX, midY, maxZ - capLength),
+        //     new Vector3(maxX, midY, maxZ - capLength),
+        //     new Vector3(maxX, midY, maxZ),
+        //     new Vector3(minX, midY, maxZ),
+        //     upperCapUVMin, upperCapUVMax,
+        //     Vector3.up
+        // );
 
         // Bottom cap
-        AddQuad(
-            new Vector3(minX, minY, minZ),
-            new Vector3(maxX, minY, minZ),
-            new Vector3(maxX, minY, maxZ),
-            new Vector3(minX, minY, maxZ),
-            lowerCapUVMin, lowerCapUVMax,
-            Vector3.down
-        );
+        // AddQuad(
+        //     new Vector3(minX, midY, minZ),
+        //     new Vector3(maxX, midY, minZ),
+        //     new Vector3(maxX, midY, minZ + capLength),
+        //     new Vector3(minX, midY, minZ + capLength),
+        //     lowerCapUVMin, lowerCapUVMax,
+        //     Vector3.up
+        // );
 
         // Center section
         AddQuad(
-            new Vector3(centerStartX, minY, minZ),
-            new Vector3(centerEndX, minY, minZ),
-            new Vector3(centerEndX, maxY, maxZ),
-            new Vector3(centerStartX, maxY, maxZ),
+            new Vector3(centerStartX, midY, minZ),
+            new Vector3(centerEndX, midY, minZ),
+            new Vector3(centerEndX, midY, maxZ),
+            new Vector3(centerStartX, midY, maxZ),
             middleUVMin, middleUVMax,
             Vector3.up
         );
 
         // Left side emissive (horizontal and vertical)
         AddQuad(
-            new Vector3(leftX, (minY + maxY) / 2, minZ),
-            new Vector3(leftX + sideWidth, (minY + maxY) / 2, minZ),
-            new Vector3(leftX + sideWidth, (minY + maxY) / 2, maxZ),
-            new Vector3(leftX, (minY + maxY) / 2, maxZ),
+            new Vector3(leftX, (minY + maxY) / 2, minSideZ),
+            new Vector3(leftX + sideWidth, (minY + maxY) / 2, minSideZ),
+            new Vector3(leftX + sideWidth, (minY + maxY) / 2, maxSideZ),
+            new Vector3(leftX, (minY + maxY) / 2, maxSideZ),
             sideUVMin, sideUVMax,
             Vector3.up
         );
-        
-        AddQuad(
-            new Vector3(leftX + sideWidth/2, minY, minZ),
-            new Vector3(leftX + sideWidth/2, maxY, minZ),
-            new Vector3(leftX + sideWidth/2, maxY, maxZ),
-            new Vector3(leftX + sideWidth/2, minY, maxZ),
-            sideUVMin, sideUVMax,
-            Vector3.right
-        );
+        //
+        // AddQuad(
+        //     new Vector3(leftX + sideWidth/2, minY, minSideZ),
+        //     new Vector3(leftX + sideWidth/2, maxY, minSideZ),
+        //     new Vector3(leftX + sideWidth/2, maxY, maxSideZ),
+        //     new Vector3(leftX + sideWidth/2, minY, maxSideZ),
+        //     sideUVMin, sideUVMax,
+        //     Vector3.right
+        // );
 
         // Right side emissive (horizontal and vertical)
         AddQuad(
-            new Vector3(centerEndX, (minY + maxY) / 2, minZ),
-            new Vector3(rightX, (minY + maxY) / 2, minZ),
-            new Vector3(rightX, (minY + maxY) / 2, maxZ),
-            new Vector3(centerEndX, (minY + maxY) / 2, maxZ),
+            new Vector3(centerEndX, (minY + maxY) / 2, minSideZ),
+            new Vector3(rightX, (minY + maxY) / 2, minSideZ),
+            new Vector3(rightX, (minY + maxY) / 2, maxSideZ),
+            new Vector3(centerEndX, (minY + maxY) / 2, maxSideZ),
             sideUVMin, sideUVMax,
             Vector3.up
         );
-        
-        AddQuad(
-            new Vector3(rightX - sideWidth/2, minY, minZ),
-            new Vector3(rightX - sideWidth/2, maxY, minZ),
-            new Vector3(rightX - sideWidth/2, maxY, maxZ),
-            new Vector3(rightX - sideWidth/2, minY, maxZ),
-            sideUVMin, sideUVMax,
-            Vector3.left
-        );
+        //
+        // AddQuad(
+        //     new Vector3(rightX - sideWidth/2, minY, minSideZ),
+        //     new Vector3(rightX - sideWidth/2, maxY, minSideZ),
+        //     new Vector3(rightX - sideWidth/2, maxY, maxSideZ),
+        //     new Vector3(rightX - sideWidth/2, minY, maxSideZ),
+        //     sideUVMin, sideUVMax,
+        //     Vector3.left
+        // );
 
         // Create final mesh
         Mesh lodMesh = new Mesh();
