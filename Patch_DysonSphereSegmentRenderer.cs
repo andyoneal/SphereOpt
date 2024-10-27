@@ -30,8 +30,8 @@ namespace SphereOpt
         [HarmonyPostfix]
         private static void DysonSphereSegmentRenderer_LoadStatic(DysonSphereSegmentRenderer __instance)
         {
-            //InstDysonNodeFrameRenderer.SetupMeshes();
-            InstDysonNodeFrameRenderer.SetupQuadMeshes();
+            InstDysonNodeFrameRenderer.SetupMeshes();
+            //InstDysonNodeFrameRenderer.SetupQuadMeshes();
             InstDysonNodeFrameRenderer.SetupBuffers();
             InstDysonNodeFrameRenderer.SetupLODShader();
         }

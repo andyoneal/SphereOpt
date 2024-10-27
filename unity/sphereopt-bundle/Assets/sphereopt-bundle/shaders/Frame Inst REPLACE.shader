@@ -7,6 +7,7 @@ Shader "VF Shaders/Dyson Sphere/Frame Inst REPLACE" {
   }
   SubShader {
     LOD 200
+    Cull Off
     Tags { "RenderType" = "DysonFrame" }
     Pass {
       LOD 200

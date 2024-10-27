@@ -53,17 +53,25 @@ namespace SphereOpt
                     options.PreserveUVFoldoverEdges = false;
                     options.PreserveUVSeamEdges = true;
                 }
-                else
-                {
-                    options.PreserveBorderEdges = true;
-                    options.PreserveUVFoldoverEdges = true;
-                    options.PreserveUVSeamEdges = false;  
-                }
+                // else
+                // {
+                //     options.PreserveBorderEdges = true;
+                //     options.PreserveUVFoldoverEdges = true;
+                //     options.PreserveUVSeamEdges = false;
+                // }
                 options.MaxIterationCount = 1000;
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
                 lodMeshes[i][1] = meshSimplifier.ToMesh();
-                meshSimplifier.Initialize(DysonSphereSegmentRenderer.protoMeshes[i]);
+
+                Mesh flattenedMesh = DysonSphereSegmentRenderer.protoMeshes[i];
+                var verts = flattenedMesh.vertices;
+                for (int j = 0; j < verts.Length; j++)
+                {
+                    verts[j] = new Vector3(verts[j].x, 0.015f, verts[j].z);
+                }
+                flattenedMesh.vertices = verts;
+                meshSimplifier.Initialize(flattenedMesh);
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.2f);
                 lodMeshes[i][2] = meshSimplifier.ToMesh();
@@ -72,7 +80,7 @@ namespace SphereOpt
 
         public static void SetupQuadMeshes()
         {
-            if (lodMeshes == null) return;
+            if (lodMeshes != null) return;
             Mesh mesh = FrameQuadMesh();
             
             lodMeshes = new Mesh[DysonSphereSegmentRenderer.totalProtoCount][];
