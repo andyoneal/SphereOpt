@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityMeshSimplifier;
@@ -53,81 +55,178 @@ namespace SphereOpt
                     options.PreserveUVFoldoverEdges = false;
                     options.PreserveUVSeamEdges = true;
                 }
-                // else
-                // {
-                //     options.PreserveBorderEdges = true;
-                //     options.PreserveUVFoldoverEdges = true;
-                //     options.PreserveUVSeamEdges = false;
-                // }
+                else
+                {
+                    options.PreserveBorderEdges = true;
+                    options.PreserveUVFoldoverEdges = true;
+                    options.PreserveUVSeamEdges = false;
+                }
                 options.MaxIterationCount = 1000;
                 meshSimplifier.SimplificationOptions = options;
                 meshSimplifier.SimplifyMesh(0.7f);
                 lodMeshes[i][1] = meshSimplifier.ToMesh();
-
-                Mesh flattenedMesh = DysonSphereSegmentRenderer.protoMeshes[i];
-                var verts = flattenedMesh.vertices;
-                for (int j = 0; j < verts.Length; j++)
-                {
-                    verts[j] = new Vector3(verts[j].x, 0.015f, verts[j].z);
-                }
-                flattenedMesh.vertices = verts;
-                meshSimplifier.Initialize(flattenedMesh);
-                meshSimplifier.SimplificationOptions = options;
-                meshSimplifier.SimplifyMesh(0.2f);
-                lodMeshes[i][2] = meshSimplifier.ToMesh();
+                
+                lodMeshes[i][2] = CreateSevenQuadLOD(DysonSphereSegmentRenderer.protoMeshes[i], 0.09f);
             }
         }
 
-        public static void SetupQuadMeshes()
-        {
-            if (lodMeshes != null) return;
-            Mesh mesh = FrameQuadMesh();
-            
-            lodMeshes = new Mesh[DysonSphereSegmentRenderer.totalProtoCount][];
-
-            for (int i = 0; i < DysonSphereSegmentRenderer.totalProtoCount; i++)
-            {
-                lodMeshes[i] = new Mesh[3];
-                lodMeshes[i][0] = mesh;
-                lodMeshes[i][1] = mesh;
-                lodMeshes[i][2] = mesh;
-            }
-        }
+        public static Mesh CreateSevenQuadLOD(Mesh originalMesh, float sideGap = 0.02f)
+    {
+        Vector3[] origVerts = originalMesh.vertices;
+        Vector2[] origUVs = originalMesh.uv;
         
-        public static Mesh FrameQuadMesh()
+        // Extract exact UV coordinates for each section
+        // Upper cap (18-23)
+        Vector2 upperCapUVMin = new Vector2(
+            Mathf.Min(origUVs[18].x, origUVs[19].x, origUVs[20].x, origUVs[21].x, origUVs[22].x, origUVs[23].x),
+            Mathf.Min(origUVs[18].y, origUVs[19].y, origUVs[20].y, origUVs[21].y, origUVs[22].y, origUVs[23].y)
+        );
+        Vector2 upperCapUVMax = new Vector2(
+            Mathf.Max(origUVs[18].x, origUVs[19].x, origUVs[20].x, origUVs[21].x, origUVs[22].x, origUVs[23].x),
+            Mathf.Max(origUVs[18].y, origUVs[19].y, origUVs[20].y, origUVs[21].y, origUVs[22].y, origUVs[23].y)
+        );
+
+        // Lower cap (150-155)
+        Vector2 lowerCapUVMin = new Vector2(
+            Mathf.Min(origUVs[150].x, origUVs[151].x, origUVs[152].x, origUVs[153].x, origUVs[154].x, origUVs[155].x),
+            Mathf.Min(origUVs[150].y, origUVs[151].y, origUVs[152].y, origUVs[153].y, origUVs[154].y, origUVs[155].y)
+        );
+        Vector2 lowerCapUVMax = new Vector2(
+            Mathf.Max(origUVs[150].x, origUVs[151].x, origUVs[152].x, origUVs[153].x, origUVs[154].x, origUVs[155].x),
+            Mathf.Max(origUVs[150].y, origUVs[151].y, origUVs[152].y, origUVs[153].y, origUVs[154].y, origUVs[155].y)
+        );
+
+        // Middle section (6, 8, 138, 140)
+        Vector2 middleUVMin = new Vector2(
+            Mathf.Min(origUVs[6].x, origUVs[8].x, origUVs[138].x, origUVs[140].x),
+            Mathf.Min(origUVs[6].y, origUVs[8].y, origUVs[138].y, origUVs[140].y)
+        );
+        Vector2 middleUVMax = new Vector2(
+            Mathf.Max(origUVs[6].x, origUVs[8].x, origUVs[138].x, origUVs[140].x),
+            Mathf.Max(origUVs[6].y, origUVs[8].y, origUVs[138].y, origUVs[140].y)
+        );
+
+        // Side sections (using the exact values you provided)
+        Vector2 sideUVMin = new Vector2(0.9522f, 0.15645f);
+        Vector2 sideUVMax = new Vector2(0.9595f, 0.48291f);
+
+        // Get mesh bounds
+        float minX = origVerts.Min(v => v.x);
+        float maxX = origVerts.Max(v => v.x);
+        float minY = origVerts.Min(v => v.y);
+        float maxY = origVerts.Max(v => v.y);
+        float minZ = origVerts.Min(v => v.z);
+        float maxZ = origVerts.Max(v => v.z);
+        
+        var vertices = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var normals = new List<Vector3>();
+        var triangles = new List<int>();
+
+        // Helper to add a quad with precise UV mapping
+        void AddQuad(Vector3 bl, Vector3 br, Vector3 tr, Vector3 tl, Vector2 uvMin, Vector2 uvMax, Vector3 normal)
         {
-            Mesh quadMesh = new Mesh();
-            
-            Vector3[] vertices = new Vector3[4]
-            {
-                new Vector3(-0.5f, 0.015f, 0f),
-                new Vector3(0.5f, 0.015f, 0f),
-                new Vector3(-0.5f, 0.015f, 1f),
-                new Vector3(0.5f, 0.015f, 1f)
-            };
-            quadMesh.vertices = vertices;
-            
-            int[] tris = new int[6]
-            {
-                0, 2, 1,
-                2, 3, 1
-            };
-            quadMesh.triangles = tris;
-            
-            quadMesh.RecalculateNormals();
-            quadMesh.RecalculateTangents();
-            
-            Vector2[] uv = new Vector2[4]
-            {
-                new Vector2(0.85688f, 0.4275f),
-                new Vector2(0.81705f, 0.4351f),
-                new Vector2(0.81705f, 0.4351f),
-                new Vector2(0.85699f, 0.4275f)
-            };
-            quadMesh.uv = uv;
-            
-            return quadMesh;
+            int baseIndex = vertices.Count;
+            vertices.AddRange(new[] { bl, br, tr, tl });
+            uvs.AddRange(new[] { 
+                new Vector2(uvMin.x, uvMin.y),
+                new Vector2(uvMax.x, uvMin.y),
+                new Vector2(uvMax.x, uvMax.y),
+                new Vector2(uvMin.x, uvMax.y)
+            });
+            normals.AddRange(new[] { normal, normal, normal, normal });
+            triangles.AddRange(new[] { 
+                baseIndex, baseIndex + 1, baseIndex + 2,
+                baseIndex, baseIndex + 2, baseIndex + 3
+            });
         }
+
+        // Calculate sections with gaps
+        float centerWidth = (maxX - minX) * 0.6f;
+        float sideWidth = (maxX - minX - centerWidth - sideGap * 2) / 2;
+        float leftX = minX;
+        float centerStartX = leftX + sideWidth + sideGap;
+        float centerEndX = centerStartX + centerWidth;
+        float rightX = maxX;
+
+        // Add quads with precise UV mapping
+        // Top cap
+        AddQuad(
+            new Vector3(minX, maxY, minZ),
+            new Vector3(maxX, maxY, minZ),
+            new Vector3(maxX, maxY, maxZ),
+            new Vector3(minX, maxY, maxZ),
+            upperCapUVMin, upperCapUVMax,
+            Vector3.up
+        );
+
+        // Bottom cap
+        AddQuad(
+            new Vector3(minX, minY, minZ),
+            new Vector3(maxX, minY, minZ),
+            new Vector3(maxX, minY, maxZ),
+            new Vector3(minX, minY, maxZ),
+            lowerCapUVMin, lowerCapUVMax,
+            Vector3.down
+        );
+
+        // Center section
+        AddQuad(
+            new Vector3(centerStartX, minY, minZ),
+            new Vector3(centerEndX, minY, minZ),
+            new Vector3(centerEndX, maxY, maxZ),
+            new Vector3(centerStartX, maxY, maxZ),
+            middleUVMin, middleUVMax,
+            Vector3.up
+        );
+
+        // Left side emissive (horizontal and vertical)
+        AddQuad(
+            new Vector3(leftX, (minY + maxY) / 2, minZ),
+            new Vector3(leftX + sideWidth, (minY + maxY) / 2, minZ),
+            new Vector3(leftX + sideWidth, (minY + maxY) / 2, maxZ),
+            new Vector3(leftX, (minY + maxY) / 2, maxZ),
+            sideUVMin, sideUVMax,
+            Vector3.up
+        );
+        
+        AddQuad(
+            new Vector3(leftX + sideWidth/2, minY, minZ),
+            new Vector3(leftX + sideWidth/2, maxY, minZ),
+            new Vector3(leftX + sideWidth/2, maxY, maxZ),
+            new Vector3(leftX + sideWidth/2, minY, maxZ),
+            sideUVMin, sideUVMax,
+            Vector3.right
+        );
+
+        // Right side emissive (horizontal and vertical)
+        AddQuad(
+            new Vector3(centerEndX, (minY + maxY) / 2, minZ),
+            new Vector3(rightX, (minY + maxY) / 2, minZ),
+            new Vector3(rightX, (minY + maxY) / 2, maxZ),
+            new Vector3(centerEndX, (minY + maxY) / 2, maxZ),
+            sideUVMin, sideUVMax,
+            Vector3.up
+        );
+        
+        AddQuad(
+            new Vector3(rightX - sideWidth/2, minY, minZ),
+            new Vector3(rightX - sideWidth/2, maxY, minZ),
+            new Vector3(rightX - sideWidth/2, maxY, maxZ),
+            new Vector3(rightX - sideWidth/2, minY, maxZ),
+            sideUVMin, sideUVMax,
+            Vector3.left
+        );
+
+        // Create final mesh
+        Mesh lodMesh = new Mesh();
+        lodMesh.vertices = vertices.ToArray();
+        lodMesh.uv = uvs.ToArray();
+        lodMesh.normals = normals.ToArray();
+        lodMesh.triangles = triangles.ToArray();
+
+        return lodMesh;
+    }
 
         public static void SetupBuffers()
         {
